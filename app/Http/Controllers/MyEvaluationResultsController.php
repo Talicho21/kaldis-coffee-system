@@ -22,10 +22,13 @@ class MyEvaluationResultsController extends Controller
         $employee = \App\Models\Employee::with('department')->find($employeeId);
         $departmentId = $employee?->department_id;
 
-        // Calculate Personal Average Score
+        // Calculate Personal Average Score (filtered by period)
         $personalResponses = EvaluationResponse::query()
             ->where('evaluable_type', 'employee')
             ->where('evaluate_id', $employeeId)
+            ->when($periodId, function ($q) use ($periodId) {
+                $q->where('evaluation_period_id', $periodId);
+            })
             ->with('questionResponses')
             ->get();
         
@@ -38,12 +41,15 @@ class MyEvaluationResultsController extends Controller
         }
         $personalAvgScore = count($personalScores) > 0 ? round(collect($personalScores)->avg(), 2) : null;
 
-        // Calculate Department Average Score
+        // Calculate Department Average Score (filtered by period)
         $departmentAvgScore = null;
         if ($departmentId) {
             $departmentResponses = EvaluationResponse::query()
                 ->where('evaluable_type', 'department')
                 ->where('evaluate_id', $departmentId)
+                ->when($periodId, function ($q) use ($periodId) {
+                    $q->where('evaluation_period_id', $periodId);
+                })
                 ->with('questionResponses')
                 ->get();
             
@@ -67,9 +73,22 @@ class MyEvaluationResultsController extends Controller
             $combinedAvg = $departmentAvgScore;
         }
 
+        // Fetch both personal evaluations and department evaluations
         $responses = EvaluationResponse::query()
-            ->where('evaluable_type', 'employee')
-            ->where('evaluate_id', $employeeId)
+            ->where(function ($q) use ($employeeId, $departmentId) {
+                // Personal evaluations
+                $q->where(function ($inner) use ($employeeId) {
+                    $inner->where('evaluable_type', 'employee')
+                          ->where('evaluate_id', $employeeId);
+                });
+                // Department evaluations (if employee has a department)
+                if ($departmentId) {
+                    $q->orWhere(function ($inner) use ($departmentId) {
+                        $inner->where('evaluable_type', 'department')
+                              ->where('evaluate_id', $departmentId);
+                    });
+                }
+            })
             ->with(['evaluator', 'evaluation.evaluatorGroup', 'evaluation.evaluatesGroup', 'evaluationPeriod', 'questionResponses'])
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
@@ -94,6 +113,10 @@ class MyEvaluationResultsController extends Controller
         $items = $responses->getCollection()->map(function (EvaluationResponse $r) {
             $scores = $r->questionResponses->pluck('score');
             $avg = $scores->count() ? round($scores->avg(), 2) : null;
+            
+            // Determine evaluation type
+            $evaluationType = $r->evaluable_type === 'employee' ? 'Personal' : ucfirst($r->evaluable_type);
+            
             return [
                 'id' => $r->id,
                 'evaluation' => [
@@ -103,6 +126,7 @@ class MyEvaluationResultsController extends Controller
                 'evaluation_period' => $r->evaluationPeriod?->evaluation_period_name,
                 'evaluator' => $r->evaluator?->name,
                 'average_score' => $avg,
+                'evaluation_type' => $evaluationType,
             ];
         });
         $responses->setCollection($items);
@@ -125,11 +149,26 @@ class MyEvaluationResultsController extends Controller
     public function show(EvaluationResponse $evaluationResponse)
     {
         $user = Auth::user();
-        if (!($evaluationResponse->evaluable_type === 'employee' && $evaluationResponse->evaluate_id === $user->employee_id)) {
+        $employee = \App\Models\Employee::find($user->employee_id);
+        $departmentId = $employee?->department_id;
+
+        // Check if the user has access to this evaluation (either personal or department)
+        $hasAccess = false;
+        
+        if ($evaluationResponse->evaluable_type === 'employee' && $evaluationResponse->evaluate_id === $user->employee_id) {
+            $hasAccess = true;
+        } elseif ($evaluationResponse->evaluable_type === 'department' && $departmentId && $evaluationResponse->evaluate_id === $departmentId) {
+            $hasAccess = true;
+        }
+
+        if (!$hasAccess) {
             abort(403);
         }
 
         $evaluationResponse->load(['evaluator', 'evaluation.evaluatorGroup', 'evaluation.evaluatesGroup', 'evaluationPeriod', 'questionResponses.question']);
+
+        // Determine evaluation type
+        $evaluationType = $evaluationResponse->evaluable_type === 'employee' ? 'Personal' : ucfirst($evaluationResponse->evaluable_type);
 
         return Inertia::render('my-results/show', [
             'response' => [
@@ -139,6 +178,7 @@ class MyEvaluationResultsController extends Controller
                     'name' => $evaluationResponse->evaluation?->name,
                 ],
                 'evaluation_period' => $evaluationResponse->evaluationPeriod?->evaluation_period_name,
+                'evaluation_type' => $evaluationType,
                 'evaluator' => $evaluationResponse->evaluator?->name,
                 'comment' => $evaluationResponse->comment,
                 'question_responses' => $evaluationResponse->questionResponses->map(function ($qr) {

@@ -56,7 +56,7 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {kpi.department_avg_score !== null ? kpi.department_avg_score.toFixed(2) : 'N/A'}
+                {kpi.department_avg_score !== null ? kpi.department_avg_score.toFixed(2) : ''}
               </div>
               <p className="text-xs text-muted-foreground">{kpi.department_name}</p>
             </CardContent>
@@ -69,9 +69,9 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {kpi.combined_avg_score !== null ? kpi.combined_avg_score.toFixed(2) : 'N/A'}
+                {kpi.combined_avg_score !== null ? kpi.combined_avg_score.toFixed(2) : ''}
               </div>
-              <p className="text-xs text-muted-foreground">(Personal + Department) / 2</p>
+              <p className="text-xs text-muted-foreground"></p>
             </CardContent>
           </Card>
         </div>
@@ -102,6 +102,7 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
                 <TableRow>
                   <TableHead className="font-bold text-white">ID</TableHead>
                   <TableHead className="font-bold text-white">Evaluation</TableHead>
+                  <TableHead className="font-bold text-white">Type</TableHead>
                   <TableHead className="font-bold text-white">Period</TableHead>
                   <TableHead className="font-bold text-white">Avg Score</TableHead>
                   <TableHead className="font-bold text-white">Actions</TableHead>
@@ -112,6 +113,15 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
                   <TableRow key={it.id} className="odd:bg-slate-100 dark:odd:bg-slate-800">
                     <TableCell>{(items.from ?? 0) + index}</TableCell>
                     <TableCell className="font-medium">{it.evaluation?.name || `Evaluation #${it.evaluation?.id}`}</TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                        it.evaluation_type === 'Personal' 
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' 
+                          : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                      }`}>
+                        {it.evaluation_type}
+                      </span>
+                    </TableCell>
                     <TableCell>{it.evaluation_period || 'N/A'}</TableCell>
                     <TableCell>{it.average_score ?? 'N/A'}</TableCell>
                     <TableCell>

@@ -26,8 +26,18 @@ export default function MyResultsShow({ response }: { response: any }) {
           </CardHeader>
           <hr />
           <CardContent>
-            <div className="space-y-1 text-sm text-gray-700">
+            <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
               <div>Evaluation Period: {response.evaluation_period || 'N/A'}</div>
+              <div>
+                Evaluation Type:{' '}
+                <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                  response.evaluation_type === 'Personal' 
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' 
+                    : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                }`}>
+                  {response.evaluation_type}
+                </span>
+              </div>
               <div>Average Score: {avg ?? 'N/A'}</div>
             </div>
           </CardContent>
