@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EvaluationResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class MyEvaluationResultsController extends Controller
@@ -117,6 +118,9 @@ class MyEvaluationResultsController extends Controller
             // Determine evaluation type
             $evaluationType = $r->evaluable_type === 'employee' ? 'Personal' : ucfirst($r->evaluable_type);
             
+            // Check if period is still active
+            $periodIsActive = $r->evaluationPeriod && $r->evaluationPeriod->status === 'active';
+            
             return [
                 'id' => $r->id,
                 'evaluation' => [
@@ -127,6 +131,11 @@ class MyEvaluationResultsController extends Controller
                 'evaluator' => $r->evaluator?->name,
                 'average_score' => $avg,
                 'evaluation_type' => $evaluationType,
+                'status' => $r->status,
+                'period_is_active' => $periodIsActive,
+                'accepted_at' => $r->accepted_at?->toDateTimeString(),
+                'rejected_at' => $r->rejected_at?->toDateTimeString(),
+                'rejection_reason' => $r->rejection_reason,
             ];
         });
         $responses->setCollection($items);
@@ -169,6 +178,9 @@ class MyEvaluationResultsController extends Controller
 
         // Determine evaluation type
         $evaluationType = $evaluationResponse->evaluable_type === 'employee' ? 'Personal' : ucfirst($evaluationResponse->evaluable_type);
+        
+        // Check if period is still active
+        $periodIsActive = $evaluationResponse->evaluationPeriod && $evaluationResponse->evaluationPeriod->status === 'active';
 
         return Inertia::render('my-results/show', [
             'response' => [
@@ -181,6 +193,11 @@ class MyEvaluationResultsController extends Controller
                 'evaluation_type' => $evaluationType,
                 'evaluator' => $evaluationResponse->evaluator?->name,
                 'comment' => $evaluationResponse->comment,
+                'status' => $evaluationResponse->status,
+                'period_is_active' => $periodIsActive,
+                'accepted_at' => $evaluationResponse->accepted_at?->toDateTimeString(),
+                'rejected_at' => $evaluationResponse->rejected_at?->toDateTimeString(),
+                'rejection_reason' => $evaluationResponse->rejection_reason,
                 'question_responses' => $evaluationResponse->questionResponses->map(function ($qr) {
                     return [
                         'question_id' => $qr->question_id,
@@ -190,6 +207,76 @@ class MyEvaluationResultsController extends Controller
                 }),
             ],
         ]);
+    }
+
+    public function accept(EvaluationResponse $evaluationResponse)
+    {
+        $user = Auth::user();
+        $employee = \App\Models\Employee::find($user->employee_id);
+        $departmentId = $employee?->department_id;
+
+        // Check access
+        $hasAccess = false;
+        if ($evaluationResponse->evaluable_type === 'employee' && $evaluationResponse->evaluate_id === $user->employee_id) {
+            $hasAccess = true;
+        } elseif ($evaluationResponse->evaluable_type === 'department' && $departmentId && $evaluationResponse->evaluate_id === $departmentId) {
+            $hasAccess = true;
+        }
+
+        if (!$hasAccess) {
+            abort(403);
+        }
+
+        // Check if period is still active
+        if (!$evaluationResponse->evaluationPeriod || $evaluationResponse->evaluationPeriod->status !== 'active') {
+            return redirect()->back()->with('error', 'Cannot accept evaluation. The evaluation period is no longer active.');
+        }
+
+        $evaluationResponse->update([
+            'status' => 'accepted',
+            'accepted_at' => now(),
+            'rejected_at' => null,
+            'rejection_reason' => null,
+        ]);
+
+        return redirect()->back()->with('success', 'Evaluation accepted successfully.');
+    }
+
+    public function reject(Request $request, EvaluationResponse $evaluationResponse)
+    {
+        $user = Auth::user();
+        $employee = \App\Models\Employee::find($user->employee_id);
+        $departmentId = $employee?->department_id;
+
+        // Check access
+        $hasAccess = false;
+        if ($evaluationResponse->evaluable_type === 'employee' && $evaluationResponse->evaluate_id === $user->employee_id) {
+            $hasAccess = true;
+        } elseif ($evaluationResponse->evaluable_type === 'department' && $departmentId && $evaluationResponse->evaluate_id === $departmentId) {
+            $hasAccess = true;
+        }
+
+        if (!$hasAccess) {
+            abort(403);
+        }
+
+        // Check if period is still active
+        if (!$evaluationResponse->evaluationPeriod || $evaluationResponse->evaluationPeriod->status !== 'active') {
+            return redirect()->back()->with('error', 'Cannot reject evaluation. The evaluation period is no longer active.');
+        }
+
+        $request->validate([
+            'rejection_reason' => 'nullable|string|max:500',
+        ]);
+
+        $evaluationResponse->update([
+            'status' => 'rejected',
+            'rejected_at' => now(),
+            'accepted_at' => null,
+            'rejection_reason' => $request->rejection_reason,
+        ]);
+
+        return redirect()->back()->with('success', 'Evaluation rejected successfully.');
     }
 }
 

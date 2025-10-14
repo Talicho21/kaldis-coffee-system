@@ -18,6 +18,15 @@ class EvaluationResponse extends Model
         'evaluable_type',
         'evaluation_period_id',
         'comment',
+        'status',
+        'accepted_at',
+        'rejected_at',
+        'rejection_reason',
+    ];
+
+    protected $casts = [
+        'accepted_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     public function evaluator(): BelongsTo

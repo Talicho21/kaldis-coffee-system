@@ -8,7 +8,8 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Award, Building2, TrendingUp } from 'lucide-react';
+import { Award, Building2, TrendingUp, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'My Evaluation Results', href: '/my-results' },
@@ -43,7 +44,7 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {kpi.personal_avg_score !== null ? kpi.personal_avg_score.toFixed(2) : 'N/A'}
+                {kpi.personal_avg_score !== null ? kpi.personal_avg_score.toFixed(2) : ''}
               </div>
               <p className="text-xs text-muted-foreground">Your overall evaluation score</p>
             </CardContent>
@@ -105,6 +106,7 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
                   <TableHead className="font-bold text-white">Type</TableHead>
                   <TableHead className="font-bold text-white">Period</TableHead>
                   <TableHead className="font-bold text-white">Avg Score</TableHead>
+                  <TableHead className="font-bold text-white">Status</TableHead>
                   <TableHead className="font-bold text-white">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -124,6 +126,26 @@ export default function MyResultsIndex({ items, periods, request, kpi }: { items
                     </TableCell>
                     <TableCell>{it.evaluation_period || 'N/A'}</TableCell>
                     <TableCell>{it.average_score ?? 'N/A'}</TableCell>
+                    <TableCell>
+                      {it.status === 'accepted' && (
+                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                          <CheckCircle className="mr-1 h-3 w-3" />
+                          Accepted
+                        </Badge>
+                      )}
+                      {it.status === 'rejected' && (
+                        <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                          <XCircle className="mr-1 h-3 w-3" />
+                          Rejected
+                        </Badge>
+                      )}
+                      {it.status === 'pending' && (
+                        <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                          <AlertCircle className="mr-1 h-3 w-3" />
+                          Pending
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Link href={`/my-results/${it.id}`}>
                         <Button variant="outline" size="sm">View</Button>
