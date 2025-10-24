@@ -115,9 +115,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Evaluator Completion Tracking
     Route::get('evaluator-completion', [EvaluatorCompletionController::class, 'index'])->name('evaluator-completion.index');
 
-    // Evaluation summary report
-    Route::get('reports/evaluation-summary', [\App\Http\Controllers\EvaluationReportController::class, 'summary'])->name('reports.evaluation-summary');
-    Route::get('reports/evaluation-summary/export', [\App\Http\Controllers\EvaluationReportController::class, 'export'])->name('reports.evaluation-summary.export');
+    // Evaluation summary report (permission-gated)
+    Route::middleware('permission:view evaluation summary')->group(function () {
+        Route::get('reports/evaluation-summary', [\App\Http\Controllers\EvaluationReportController::class, 'summary'])->name('reports.evaluation-summary');
+        Route::get('reports/evaluation-summary/export', [\App\Http\Controllers\EvaluationReportController::class, 'export'])->name('reports.evaluation-summary.export');
+    });
 });
 
 require __DIR__ . '/settings.php';

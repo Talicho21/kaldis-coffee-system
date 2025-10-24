@@ -51,6 +51,7 @@ const sections: NavSection[] = [
     icon: LayoutDashboard,
     items: [
       { title: 'Overview', href: '/dashboard', icon: LayoutDashboard, permission: 'view dashboard' },
+      { title: 'Evaluation Summary', href: '/reports/evaluation-summary', icon: BarChart3, permission: 'view evaluation summary' },
     ],
   },
   {

@@ -129,5 +129,8 @@ class PermissionSeeder extends Seeder
 
         // Evaluator Completion Tracking
         Permission::firstOrCreate(['name' => 'view evaluator completion']);
+
+        // Evaluation Summary
+        Permission::firstOrCreate(['name' => 'view evaluation summary']);
     }
 }
