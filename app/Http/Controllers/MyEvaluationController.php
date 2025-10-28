@@ -183,7 +183,7 @@ class MyEvaluationController extends Controller
             ]);
         }
 
-        return back()->with('message', 'Evaluation submitted successfully!');
+        return redirect()->route('my-evaluation.index')->with('message', 'Evaluation submitted successfully!');
     }
 
     public function history(Request $request)
@@ -323,7 +323,7 @@ class MyEvaluationController extends Controller
             ]);
         }
 
-        return back()->with('message', 'Evaluation updated successfully!');
+        return redirect()->route('my-evaluation.history')->with('message', 'Scores updated successfully!');
     }
 
     public function destroyResponse(EvaluationResponse $evaluationResponse)

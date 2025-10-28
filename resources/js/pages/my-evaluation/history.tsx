@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 type Item = { id: number; evaluation: { id: number; name?: string | null }; evaluable_type: 'employee' | 'department' | 'branch' | 'other'; evaluate_label: string; evaluation_period?: string | null; is_editable: boolean };
 
@@ -16,8 +17,16 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function MyEvaluationHistory({ items, periods, request }: { items: { data: Item[]; total: number; from: number; to: number; links: any[] }; periods: { id: number; evaluation_period_name: string }[]; request?: { search?: string; period_id?: string } }) {
+  const { flash } = usePage<{ flash: { message?: string } }>().props;
   const [search, setSearch] = useState<string>(request?.search ?? '');
   const [periodId, setPeriodId] = useState<string>(request?.period_id ?? 'all');
+  
+  useEffect(() => {
+    if (flash.message) {
+      toast.success(flash.message);
+    }
+  }, [flash.message]);
+  
   const handleDelete = (id: number) => {
     if (confirm('Are you sure you want to cancel/delete this evaluation?')) {
       router.delete(`/my-evaluation/response/${id}`);

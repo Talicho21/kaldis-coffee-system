@@ -22,11 +22,43 @@ class EmployeeController extends Controller
         $query = Employee::with(['branch', 'department', 'position', 'image']);
 
         if ($search = request('search')) {
-            $query->where('employee_code', 'like', "%{$search}%")
+            $query->where(function($q) use ($search) {
+                $q->where('employee_code', 'like', "%{$search}%")
                   ->orWhere('first_name', 'like', "%{$search}%")
                   ->orWhere('last_name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$search}%"]);
+            });
         }
+
+        if ($branchId = request('branch_id')) {
+            $query->where('branch_id', $branchId);
+        }
+
+        if ($departmentId = request('department_id')) {
+            $query->where('department_id', $departmentId);
+        }
+
+        if ($status = request('status')) {
+            $query->where('status', $status);
+        }
+
+        $branches = Branch::with('departments')
+            ->get()
+            ->map(function ($branch) {
+                return [
+                    'id' => $branch->id,
+                    'name' => $branch->name,
+                    'departments' => $branch->departments->map(function ($department) {
+                        return [
+                            'id' => $department->id,
+                            'name' => $department->name,
+                        ];
+                    })->toArray(),
+                ];
+            });
+
+        $departments = Department::select('id', 'name')->get();
 
         return Inertia::render('employees/index', [
             'employees' => $query->paginate(15)->withQueryString()->through(function ($employee) {
@@ -43,7 +75,9 @@ class EmployeeController extends Controller
                     'image_path' => $employee->image ? $employee->image->path : null,
                 ];
             }),
-            'request' => request()->only('search'),
+            'branches' => $branches,
+            'departments' => $departments,
+            'request' => request()->only(['search', 'branch_id', 'department_id', 'status']),
         ]);
     }
 
@@ -134,6 +168,31 @@ class EmployeeController extends Controller
         }
 
         return to_route('employees.index')->with('message', 'Employee Created Successfully!');
+    }
+
+    public function show(Employee $employee)
+    {
+        $employee->load(['branch', 'department', 'position', 'image']);
+        
+        return Inertia::render('employees/show', [
+            'employee' => [
+                'id' => $employee->id,
+                'employee_code' => $employee->employee_code,
+                'first_name' => $employee->first_name,
+                'last_name' => $employee->last_name,
+                'phone' => $employee->phone,
+                'gender' => $employee->gender,
+                'date_of_birth' => $employee->date_of_birth,
+                'email' => $employee->email,
+                'hire_date' => $employee->hire_date,
+                'image_path' => $employee->image ? $employee->image->path : null,
+                'branch' => $employee->branch ? $employee->branch->name : null,
+                'department' => $employee->department ? $employee->department->name : null,
+                'position' => $employee->position ? $employee->position->title : null,
+                'status' => $employee->status,
+                'created_at' => $employee->created_at->format('d-m-Y'),
+            ],
+        ]);
     }
 
     public function edit(Employee $employee)
@@ -316,5 +375,70 @@ class EmployeeController extends Controller
         }
         $employee->delete();
         return to_route('employees.index')->with('message', 'Employee Deleted Successfully!');
+    }
+
+    public function export(Request $request)
+    {
+        $query = Employee::with(['branch', 'department', 'position']);
+
+        if ($search = $request->query('search')) {
+            $query->where(function($q) use ($search) {
+                $q->where('employee_code', 'like', "%{$search}%")
+                  ->orWhere('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$search}%"]);
+            });
+        }
+
+        if ($branchId = $request->query('branch_id')) {
+            $query->where('branch_id', $branchId);
+        }
+
+        if ($departmentId = $request->query('department_id')) {
+            $query->where('department_id', $departmentId);
+        }
+
+        if ($status = $request->query('status')) {
+            $query->where('status', $status);
+        }
+
+        $employees = $query->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'inline; filename="employees-' . date('Y-m-d') . '.csv"',
+            'Cache-Control' => 'ейчас-store, no-cache, must-revalidate',
+        ];
+
+        return response()->stream(function () use ($employees) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) { return; }
+            
+            // Header row
+            fputcsv($out, ['ID', 'Employee Code', 'First Name', 'Last Name', 'Full Name', 'Email', 'Phone', 'Gender', 'Date of Birth', 'Hire Date', 'Branch', 'Department', 'Position', 'Status', 'Created At']);
+            
+            // Data rows
+            foreach ($employees as $employee) {
+                fputcsv($out, [
+                    $employee->id,
+                    $employee->employee_code,
+                    $employee->first_name,
+                    $employee->last_name,
+                    trim(($employee->first_name ?? '') . ' ' . ($employee->last_name ?? '')),
+                    $employee->email ?? '',
+                    $employee->phone ?? '',
+                    ucfirst($employee->gender),
+                    $employee->date_of_birth ? date('Y-m-d', strtotime($employee->date_of_birth)) : '',
+                    $employee->hire_date ? date('Y-m-d', strtotime($employee->hire_date)) : '',
+                    $employee->branch ? $employee->branch->name : '',
+                    $employee->department ? $employee->department->name : '',
+                    $employee->position ? $employee->position->title : '',
+                    ucfirst($employee->status),
+                    $employee->created_at->format('Y-m-d'),
+                ]);
+            }
+            fclose($out);
+        }, 200, $headers);
     }
 }

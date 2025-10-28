@@ -6,7 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 type Evaluation = { id: number; name?: string; created_at?: string; evaluator_group?: { name?: string }; evaluates_group?: { name?: string } };
 
@@ -15,7 +16,14 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function MyEvaluationIndex({ evaluations, request }: { evaluations: { data: Evaluation[]; total: number; from: number; to: number; links: any[] }; request?: { search?: string } }) {
+  const { flash } = usePage<{ flash: { message?: string } }>().props;
   const [search, setSearch] = useState<string>(request?.search ?? '');
+
+  useEffect(() => {
+    if (flash.message) {
+      toast.success(flash.message);
+    }
+  }, [flash.message]);
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();

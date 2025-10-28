@@ -3,12 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePermission } from '@/hooks/user-permissions';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Employee } from '@/types/employees';
+import { Branch } from '@/types/branches';
+import { Department } from '@/types/departments';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -18,9 +21,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function Employees({ employees, request }: { employees: { data: Employee[], total: number, from: number, to: number, links: any[] }, request?: { search?: string } }) {
+export default function Employees({ employees, branches, departments, request }: { employees: { data: Employee[], total: number, from: number, to: number, links: any[] }, branches: Branch[], departments: Department[], request?: { search?: string, branch_id?: string, department_id?: string, status?: string } }) {
     const { flash } = usePage<{ flash: { message?: string } }>().props;
     const [search, setSearch] = useState<string>(request?.search ?? '');
+    const [selectedBranch, setSelectedBranch] = useState<string>(request?.branch_id ?? 'all');
+    const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
+    const [selectedStatus, setSelectedStatus] = useState<string>(request?.status ?? 'all');
     const { can } = usePermission();
 
     useEffect(() => {
@@ -29,9 +35,64 @@ export default function Employees({ employees, request }: { employees: { data: E
         }
     }, [flash.message]);
 
+    // Filter departments based on selected branch
+    const filteredDepartments = useMemo(() => {
+        if (selectedBranch === 'all') {
+            return departments;
+        }
+        const branch = branches.find(b => b.id.toString() === selectedBranch);
+        return branch && branch.departments ? branch.departments : departments;
+    }, [selectedBranch, branches, departments]);
+
+    function handleFilterChange() {
+        const params: any = {};
+        if (search) params.search = search;
+        if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+        if (selectedDepartment !== 'all') params.department_id = selectedDepartment;
+        if (selectedStatus !== 'all') params.status = selectedStatus;
+        
+        router.get('/employees', params, { preserveState: true, replace: true });
+    }
+
     function submitSearch(e: React.FormEvent) {
         e.preventDefault();
-        router.get('/employees', { search }, { preserveState: true, replace: true });
+        handleFilterChange();
+    }
+
+    function handleBranchChange(value: string) {
+        setSelectedBranch(value);
+        setSelectedDepartment('all');
+        
+        // Apply filter automatically
+        const params: any = {};
+        if (search) params.search = search;
+        if (value !== 'all') params.branch_id = value;
+        if (selectedStatus !== 'all') params.status = selectedStatus;
+        router.get('/employees', params, { preserveState: true, replace: true });
+    }
+
+    function handleDepartmentChange(value: string) {
+        setSelectedDepartment(value);
+        
+        // Apply filter automatically
+        const params: any = {};
+        if (search) params.search = search;
+        if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+        if (value !== 'all') params.department_id = value;
+        if (selectedStatus !== 'all') params.status = selectedStatus;
+        router.get('/employees', params, { preserveState: true, replace: true });
+    }
+
+    function handleStatusChange(value: string) {
+        setSelectedStatus(value);
+        
+        // Apply filter automatically
+        const params: any = {};
+        if (search) params.search = search;
+        if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+        if (selectedDepartment !== 'all') params.department_id = selectedDepartment;
+        if (value !== 'all') params.status = value;
+        router.get('/employees', params, { preserveState: true, replace: true });
     }
 
     function deleteEmployee(id: number) {
@@ -45,23 +106,85 @@ export default function Employees({ employees, request }: { employees: { data: E
             <Head title="Employees" />
             <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
                 <Card>
-                    <CardHeader className="flex items-center justify-between">
-                        <CardTitle>Employees Management</CardTitle>
-                        <form className="ml-4 flex gap-2" onSubmit={submitSearch}>
-                            <Input
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search employees..."
-                            />
-                            <Button type="submit" variant="outline">Search</Button>
-                        </form>
-                        <CardAction>
-                            {can('create employees') && (
-                                <Link href="/employees/create">
-                                    <Button variant="default">Add New</Button>
-                                </Link>
-                            )}
-                        </CardAction>
+                    <CardHeader>
+                        <div className="flex items-start justify-between mb-4">
+                            <CardTitle>Employees Management</CardTitle>
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => {
+                                        const params = new URLSearchParams();
+                                        if (search) params.set('search', search);
+                                        if (selectedBranch !== 'all') params.set('branch_id', selectedBranch);
+                                        if (selectedDepartment !== 'all') params.set('department_id', selectedDepartment);
+                                        if (selectedStatus !== 'all') params.set('status', selectedStatus);
+                                        window.location.href = `/employees/export${params.toString() ? `?${params.toString()}` : ''}`;
+                                    }}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                    📥 Export CSV
+                                </Button>
+                                {can('create employees') && (
+                                    <Link href="/employees/create">
+                                        <Button variant="default">Add New</Button>
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-end gap-3">
+                            <form className="flex gap-2" onSubmit={submitSearch}>
+                                <Input
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search employees..."
+                                    className="max-w-xs"
+                                />
+                                <Button type="submit" variant="outline">Search</Button>
+                            </form>
+                            <div className="flex gap-2">
+                                <Select value={selectedBranch} onValueChange={handleBranchChange}>
+                                    <SelectTrigger className="w-[200px]">
+                                        <SelectValue placeholder="Filter by Branch" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Branches</SelectItem>
+                                        {branches.map((branch) => (
+                                            <SelectItem key={branch.id} value={branch.id.toString()}>
+                                                {branch.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select 
+                                    value={selectedDepartment} 
+                                    onValueChange={handleDepartmentChange}
+                                    disabled={selectedBranch === 'all'}
+                                >
+                                    <SelectTrigger className="w-[200px]">
+                                        <SelectValue placeholder="Filter by Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Departments</SelectItem>
+                                        {filteredDepartments.map((dept) => (
+                                            <SelectItem key={dept.id} value={dept.id.toString()}>
+                                                {dept.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select value={selectedStatus} onValueChange={handleStatusChange}>
+                                    <SelectTrigger className="w-[200px]">
+                                        <SelectValue placeholder="Filter by Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                        <SelectItem value="terminated">Terminated</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                     </CardHeader>
                     <hr />
                     <CardContent>
@@ -71,7 +194,7 @@ export default function Employees({ employees, request }: { employees: { data: E
                                     <TableHead className="font-bold text-white">ID</TableHead>
                                     <TableHead className="font-bold text-white">Image</TableHead>
                                     <TableHead className="font-bold text-white">Employee Code</TableHead>
-                                    <TableHead className="font-bold text-white">Name</TableHead>
+                                    <TableHead className="font-bold text-white">Full Name</TableHead>
                                     <TableHead className="font-bold text-white">Branch</TableHead>
                                     <TableHead className="font-bold text-white">Department</TableHead>
                                     <TableHead className="font-bold text-white">Position</TableHead>

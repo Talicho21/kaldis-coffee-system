@@ -43,12 +43,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Roles
     Route::resource('roles', RoleController::class)->except(['show']);
 
+    // Users Export - Must be before resource route to avoid conflict
+    Route::get('users/export', [UserController::class, 'export'])->name('users.export');
+    
     // Users
     Route::resource('users', UserController::class)->except(['show']);
 
     // Departments
     Route::resource('departments', DepartmentController::class)->except(['show']);
 
+    // Employees Export - Must be before resource route to avoid conflict
+    Route::get('employees/export', [EmployeeController::class, 'export'])->name('employees.export');
+    
     // Branches, Positions, Employees
     Route::resources([
         'branches' => BranchController::class,

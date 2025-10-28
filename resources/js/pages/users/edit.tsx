@@ -26,6 +26,7 @@ export default function EditUser({ roles, employees, user }: { roles: string[]; 
         employee_id: user.employee_id?.toString() || '',
         name: user.name,
         email: user.email,
+        password: '',
         roles: user.roles || [],
     });
 
@@ -117,6 +118,18 @@ export default function EditUser({ roles, employees, user }: { roles: string[]; 
                                     placeholder="Enter email"
                                 />
                                 <InputError message={errors.email} />
+                            </div>
+                            <div className="mb-4">
+                                <Label htmlFor="password">New Password (leave blank to keep current)</Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    value={data.password}
+                                    onChange={(e) => setData('password', e.target.value)}
+                                    aria-invalid={!!errors.password}
+                                    placeholder="Enter new password"
+                                />
+                                <InputError message={errors.password} />
                             </div>
                             <Label>Select Roles</Label>
                             <div className="my-4">
