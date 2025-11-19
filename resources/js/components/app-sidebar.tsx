@@ -42,6 +42,8 @@ import {
   Settings,
   Calendar as CalendarIcon,
   TrendingUp,
+  Package,
+  Warehouse,
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -52,6 +54,7 @@ const sections: NavSection[] = [
     items: [
       { title: 'Overview', href: '/dashboard', icon: LayoutDashboard, permission: 'view dashboard' },
       { title: 'Evaluation Summary', href: '/reports/evaluation-summary', icon: BarChart3, permission: 'view evaluation summary' },
+      { title: 'Inventory Count Summary', href: '/reports/inventory-count-summary', icon: Warehouse, permission: 'view inventory count summary' },
     ],
   },
   {
@@ -67,6 +70,8 @@ const sections: NavSection[] = [
       { title: 'Employees', href: '/employees', icon: Users, permission: 'view employees' },
       { title: 'Managers', href: '/managers', icon: ShieldCheck, permission: 'view managers' },
       { title: 'Other Evaluables', href: '/other-evaluables', icon: FileText, permission: 'view other evaluables' },
+      { title: 'Child Categories', href: '/child-categories', icon: FolderKey, permission: 'view child categories' },
+      { title: 'Products', href: '/products', icon: ClipboardList, permission: 'view products' },
     ],
   },
   {
@@ -76,6 +81,7 @@ const sections: NavSection[] = [
       { title: 'Fiscal Years', href: '/fiscal-years', icon: Calendar, permission: 'view fiscal years' },
       { title: 'Fiscal Months', href: '/fiscal-months', icon: CalendarDays, permission: 'view fiscal months' },
       { title: 'Evaluation Periods', href: '/evaluation-periods', icon: CalendarCheck, permission: 'view evaluation periods' },
+      { title: 'Inventory Periods', href: '/inventory-periods', icon: CalendarCheck, permission: 'view inventory periods' },
     ],
   },
   {
@@ -93,6 +99,14 @@ const sections: NavSection[] = [
       { title: 'Evaluation History', href: '/my-evaluation/history', icon: History, permission: 'Evaluation History' },
       { title: 'My Results', href: '/my-results', icon: Award, permission: 'My Results' },
       { title: 'Rejected Evaluations', href: '/rejected-evaluations', icon: XCircle, permission: 'view rejected evaluations' },
+    ],
+  },
+  {
+    label: 'Inventory Management',
+    icon: Warehouse,
+    items: [
+      { title: 'Inventory Counts', href: '/inventory-counts', icon: Package, permission: 'view inventory counts' },
+      { title: 'Inventory Completion Tracking', href: '/inventory-completion-tracking', icon: ClipboardCheck, permission: 'view inventory completion tracking' },
     ],
   },
 ];

@@ -31,6 +31,11 @@ class FiscalYear extends Model
         return $this->hasMany(EvaluationPeriod::class);
     }
 
+    public function inventoryPeriods(): HasMany
+    {
+        return $this->hasMany(InventoryPeriod::class);
+    }
+
     // public function evaluations(): HasMany
     // {
     //     return $this->hasMany(Evaluation::class);

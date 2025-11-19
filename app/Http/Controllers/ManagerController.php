@@ -158,4 +158,34 @@ class ManagerController extends Controller
         $manager->delete();
         return redirect()->route('managers.index')->with('message', 'Manager deleted successfully.');
     }
+
+    /**
+     * Get departments by branch ID (API endpoint for dynamic dropdowns)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function departmentsByBranch(Request $request)
+    {
+        $branchId = $request->query('branch_id');
+        
+        if (!$branchId) {
+            return response()->json([]);
+        }
+
+        $branch = Branch::with('departments')->find($branchId);
+        
+        if (!$branch) {
+            return response()->json([]);
+        }
+
+        $departments = $branch->departments->map(function ($department) {
+            return [
+                'id' => $department->id,
+                'name' => $department->name,
+            ];
+        });
+
+        return response()->json($departments);
+    }
 }

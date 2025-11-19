@@ -132,5 +132,37 @@ class PermissionSeeder extends Seeder
 
         // Evaluation Summary
         Permission::firstOrCreate(['name' => 'view evaluation summary']);
+
+        // Inventory Count Summary
+        Permission::firstOrCreate(['name' => 'view inventory count summary']);
+
+        // Child Categories
+        Permission::firstOrCreate(['name' => 'view child categories']);
+        Permission::firstOrCreate(['name' => 'create child categories']);
+        Permission::firstOrCreate(['name' => 'update child categories']);
+        Permission::firstOrCreate(['name' => 'delete child categories']);
+
+        // Products
+        Permission::firstOrCreate(['name' => 'view products']);
+        Permission::firstOrCreate(['name' => 'create products']);
+        Permission::firstOrCreate(['name' => 'update products']);
+        Permission::firstOrCreate(['name' => 'delete products']);
+
+        // Inventory Periods
+        Permission::firstOrCreate(['name' => 'view inventory periods']);
+        Permission::firstOrCreate(['name' => 'create inventory periods']);
+        Permission::firstOrCreate(['name' => 'update inventory periods']);
+        Permission::firstOrCreate(['name' => 'delete inventory periods']);
+
+        // Inventory Counts
+        Permission::firstOrCreate(['name' => 'view inventory counts']);
+        Permission::firstOrCreate(['name' => 'create inventory counts']);
+        Permission::firstOrCreate(['name' => 'update inventory counts']);
+        Permission::firstOrCreate(['name' => 'delete inventory counts']);
+        Permission::firstOrCreate(['name' => 'approve inventory counts']);
+        Permission::firstOrCreate(['name' => 'unapprove inventory counts']);
+
+        // Inventory Completion Tracking
+        Permission::firstOrCreate(['name' => 'view inventory completion tracking']);
     }
 }

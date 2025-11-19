@@ -96,6 +96,40 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Evaluation Periods
     Route::resource('evaluation-periods', EvaluationPeriodController::class)->except(['show']);
 
+    // Child Categories
+    Route::middleware('permission:view child categories')->group(function () {
+        Route::resource('child-categories', \App\Http\Controllers\ChildCategoryController::class)->except(['show']);
+    });
+
+    // Products
+    Route::middleware('permission:view products')->group(function () {
+        Route::resource('products', \App\Http\Controllers\ProductController::class)->except(['show']);
+    });
+
+    // Inventory Periods
+    Route::middleware('permission:view inventory periods')->group(function () {
+        Route::resource('inventory-periods', \App\Http\Controllers\InventoryPeriodController::class)->except(['show']);
+    });
+
+    // Inventory Counts
+    Route::middleware('permission:view inventory counts')->group(function () {
+        Route::post('inventory-counts/bulk', [\App\Http\Controllers\InventoryCountController::class, 'bulkStore'])->name('inventory-counts.bulk');
+        Route::put('inventory-counts/{inventoryCount}/approve', [\App\Http\Controllers\InventoryCountController::class, 'approve'])->name('inventory-counts.approve');
+        Route::put('inventory-counts/{inventoryCount}/unapprove', [\App\Http\Controllers\InventoryCountController::class, 'unapprove'])->name('inventory-counts.unapprove');
+        Route::post('inventory-counts/bulk-approve', [\App\Http\Controllers\InventoryCountController::class, 'bulkApprove'])->name('inventory-counts.bulk-approve');
+        Route::post('inventory-counts/bulk-unapprove', [\App\Http\Controllers\InventoryCountController::class, 'bulkUnapprove'])->name('inventory-counts.bulk-unapprove');
+        Route::resource('inventory-counts', \App\Http\Controllers\InventoryCountController::class)->except(['show']);
+    });
+
+    // Inventory Completion Tracking
+    Route::middleware('permission:view inventory completion tracking')->group(function () {
+        Route::get('inventory-completion-tracking', [\App\Http\Controllers\InventoryCompletionTrackingController::class, 'index'])->name('inventory-completion-tracking.index');
+        Route::get('inventory-completion-tracking/{branch}/{period}/missing-categories', [\App\Http\Controllers\InventoryCompletionTrackingController::class, 'getMissingChildCategories'])->name('inventory-completion-tracking.missing-categories');
+    });
+
+
+
+
     // My Evaluation
     Route::get('my-evaluation', [MyEvaluationController::class, 'index'])->name('my-evaluation.index');
     // Place static and specific routes BEFORE dynamic {evaluation}
@@ -125,6 +159,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:view evaluation summary')->group(function () {
         Route::get('reports/evaluation-summary', [\App\Http\Controllers\EvaluationReportController::class, 'summary'])->name('reports.evaluation-summary');
         Route::get('reports/evaluation-summary/export', [\App\Http\Controllers\EvaluationReportController::class, 'export'])->name('reports.evaluation-summary.export');
+    });
+
+    // Inventory Count summary report (permission-gated)
+    Route::middleware('permission:view inventory count summary')->group(function () {
+        Route::get('reports/inventory-count-summary', [\App\Http\Controllers\InventoryCountSummaryController::class, 'summary'])->name('reports.inventory-count-summary');
+        Route::get('reports/inventory-count-summary/export', [\App\Http\Controllers\InventoryCountSummaryController::class, 'export'])->name('reports.inventory-count-summary.export');
     });
 });
 
