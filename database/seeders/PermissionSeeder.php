@@ -101,6 +101,7 @@ class PermissionSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'create evaluations']);
         Permission::firstOrCreate(['name' => 'update evaluations']);
         Permission::firstOrCreate(['name' => 'delete evaluations']);
+        Permission::firstOrCreate(['name' => 'view evaluator group column']);
 
 
         // Fiscal Years

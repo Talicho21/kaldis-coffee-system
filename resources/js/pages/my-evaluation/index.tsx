@@ -4,7 +4,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
+import { type BreadcrumbItem, type PageProps } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -16,8 +16,10 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function MyEvaluationIndex({ evaluations, request }: { evaluations: { data: Evaluation[]; total: number; from: number; to: number; links: any[] }; request?: { search?: string } }) {
-  const { flash } = usePage<{ flash: { message?: string } }>().props;
+  const { flash, auth } = usePage<PageProps>().props;
   const [search, setSearch] = useState<string>(request?.search ?? '');
+  
+  const canViewEvaluatorGroup = auth.permissions.includes('view evaluator group column');
 
   useEffect(() => {
     if (flash.message) {
@@ -52,7 +54,9 @@ export default function MyEvaluationIndex({ evaluations, request }: { evaluation
                 <TableRow>
                   <TableHead className="font-bold text-white">ID</TableHead>
                   <TableHead className="font-bold text-white">Name</TableHead>
-                  <TableHead className="font-bold text-white">Evaluator Group</TableHead>
+                  {canViewEvaluatorGroup && (
+                    <TableHead className="font-bold text-white">Evaluator Group</TableHead>
+                  )}
                   <TableHead className="font-bold text-white">Evaluates Group</TableHead>
                   <TableHead className="font-bold text-white">Actions</TableHead>
                 </TableRow>
@@ -62,7 +66,9 @@ export default function MyEvaluationIndex({ evaluations, request }: { evaluation
                   <TableRow key={ev.id} className="odd:bg-slate-100 dark:odd:bg-slate-800">
                     <TableCell>{(evaluations.from ?? 0) + index}</TableCell>
                     <TableCell className="font-medium">{ev.name || `Evaluation #${ev.id}`}</TableCell>
-                    <TableCell>{ev.evaluator_group?.name || '—'}</TableCell>
+                    {canViewEvaluatorGroup && (
+                      <TableCell>{ev.evaluator_group?.name || '—'}</TableCell>
+                    )}
                     <TableCell>{ev.evaluates_group?.name || '—'}</TableCell>
                     <TableCell>
                       <Link href={`/my-evaluation/${ev.id}`}>
