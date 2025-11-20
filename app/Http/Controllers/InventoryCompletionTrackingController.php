@@ -32,7 +32,9 @@ class InventoryCompletionTrackingController extends Controller
         }
 
         $inventoryPeriods = $query->with('fiscalYear:id,name')->get();
-        $branches = Branch::all();
+        $branches = Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
+            ->whereNotIn('id', [3, 5, 48])
+            ->get();
         $totalChildCategories = ChildCategory::count();
 
         $statusFilter = $request->query('status');
@@ -70,7 +72,9 @@ class InventoryCompletionTrackingController extends Controller
         }
 
         $inventoryPeriods = $query->get();
-        $branches = Branch::all();
+        $branches = Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
+            ->whereNotIn('id', [3, 5, 48])
+            ->get();
         $totalChildCategories = ChildCategory::count();
 
         $statusFilter = $request->query('status');
