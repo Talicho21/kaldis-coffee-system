@@ -245,7 +245,7 @@ class MyBranchOrdersController extends Controller
     }
 
     /**
-     * Export orders to PDF
+     * Export orders to PDF or Excel (CSV)
      */
     public function export(Request $request): HttpResponse
     {
@@ -319,6 +319,11 @@ class MyBranchOrdersController extends Controller
         // Get all orders (no pagination for export)
         $orders = $query->orderBy($sortField, $sortDirection)->get();
 
+        $format = $request->query('format', 'pdf');
+
+        if ($format === 'excel') {
+            return $this->exportCsv($orders);
+        }
         // Calculate totals
         $totalAmount = $orders->sum('total_amount');
         $collectedCount = $orders->whereNotNull('collected_at')->count();
@@ -337,5 +342,59 @@ class MyBranchOrdersController extends Controller
         ])->setPaper('a4', 'landscape');
 
         return $pdf->download('branch-orders-' . now()->format('Y-m-d-His') . '.pdf');
+    }
+<<<<<<< HEAD
+=======
+
+    private function exportCsv($orders)
+    {
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="branch-orders-' . date('Y-m-d-His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ];
+
+        return response()->stream(function () use ($orders) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) { return; }
+            
+            // BOM for UTF-8 Excel compatibility
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+
+            // Header row
+            fputcsv($out, [
+                'Order #', 
+                'Client Name', 
+                'Phone Number', 
+                'Order Type', 
+                'Collection Day', 
+                'Products', 
+                'Status', 
+                'Total Amount', 
+                'Collection Status',
+                'Date Created'
+            ]);
+            
+            // Data rows
+            foreach ($orders as $order) {
+                $products = $order->items->map(function($item) {
+                    return ($item->product->product_name ?? 'Unknown') . " (" . $item->quantity . ")";
+                })->implode(', ');
+
+                fputcsv($out, [
+                    $order->order_number,
+                    $order->client_name,
+                    $order->phone_number,
+                    $order->orderType->name ?? '-',
+                    $order->collectionDay->name ?? '-',
+                    $products,
+                    $order->status,
+                    $order->total_amount,
+                    $order->collected_at ? 'Collected' : 'Pending',
+                    $order->created_at->format('Y-m-d H:i:s'),
+                ]);
+            }
+            fclose($out);
+        }, 200, $headers);
     }
 }

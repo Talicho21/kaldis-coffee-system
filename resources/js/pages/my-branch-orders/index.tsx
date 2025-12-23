@@ -1,13 +1,19 @@
 import { type BreadcrumbItem, type PaginationData } from '@/types';
 import { type PreOrder } from '@/types/pre-order';
 import { Link, router } from '@inertiajs/react';
-import { ArrowDown, ArrowUp, ArrowUpDown, DownloadIcon, PackageCheckIcon, ScrollTextIcon, SearchIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, DownloadIcon, PackageCheckIcon, ScrollTextIcon, SearchIcon, FileTextIcon, TableIcon, ChevronDownIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import AppLayout from '@/layouts/app-layout';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Branch Orders', href: '/my-branch-orders' }];
@@ -261,23 +267,47 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 
 						<Button onClick={handleFilter}>Filter</Button>
 
-						<Button
-							variant="outline"
-							onClick={() => {
-								const params = new URLSearchParams();
-								if (search) params.append('search', search);
-								if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
-								if (orderTypeId !== 'all') params.append('order_type_id', orderTypeId);
-								if (collectionStatus !== 'all') params.append('collection_status', collectionStatus);
-								if (filters?.sort) params.append('sort', filters.sort);
-								if (filters?.direction) params.append('direction', filters.direction);
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant="outline">
+									<DownloadIcon className="mr-2 size-4" />
+									Export
+									<ChevronDownIcon className="ml-2 size-4" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								<DropdownMenuItem onClick={() => {
+									const params = new URLSearchParams();
+									if (search) params.append('search', search);
+									if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+									if (orderTypeId !== 'all') params.append('order_type_id', orderTypeId);
+									if (collectionStatus !== 'all') params.append('collection_status', collectionStatus);
+									if (filters?.sort) params.append('sort', filters.sort);
+									if (filters?.direction) params.append('direction', filters.direction);
+									params.append('format', 'pdf');
 
-								window.location.href = `/my-branch-orders/export?${params.toString()}`;
-							}}
-						>
-							<DownloadIcon className="mr-2 size-4" />
-							Export PDF
-						</Button>
+									window.location.href = `/my-branch-orders/export?${params.toString()}`;
+								}}>
+									<FileTextIcon className="mr-2 size-4" />
+									Export as PDF
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => {
+									const params = new URLSearchParams();
+									if (search) params.append('search', search);
+									if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+									if (orderTypeId !== 'all') params.append('order_type_id', orderTypeId);
+									if (collectionStatus !== 'all') params.append('collection_status', collectionStatus);
+									if (filters?.sort) params.append('sort', filters.sort);
+									if (filters?.direction) params.append('direction', filters.direction);
+									params.append('format', 'excel');
+
+									window.location.href = `/my-branch-orders/export?${params.toString()}`;
+								}}>
+									<TableIcon className="mr-2 size-4" />
+									Export as Excel
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
 
 					{/* Orders Table */}

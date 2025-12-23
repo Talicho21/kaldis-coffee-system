@@ -1,7 +1,7 @@
 import { type BreadcrumbItem, type PaginationData, type SharedData } from '@/types';
 import { type PreOrder, type OrderType, type CollectionDay } from '@/types/pre-order';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { PlusIcon, SearchIcon, EyeIcon, PencilIcon, Trash2Icon, ArrowUpDown, ArrowUp, ArrowDown, CopyIcon, MessageSquareIcon, DownloadIcon } from 'lucide-react';
+import { PlusIcon, SearchIcon, EyeIcon, PencilIcon, Trash2Icon, ArrowUpDown, ArrowUp, ArrowDown, CopyIcon, MessageSquareIcon, DownloadIcon, FileTextIcon, TableIcon, ChevronDownIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -15,6 +15,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Table,
     TableBody,
@@ -67,7 +73,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
     const canDeleteOrders = userPermissions?.includes('delete pre-orders');
     const canSendBulkSms = userPermissions?.includes('send bulk sms reminders');
     const canViewAuditTrail = userPermissions?.includes('view pre-order audit trail');
-    
+
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || 'all');
     const [branchId, setBranchId] = useState(filters.branch_id || 'all');
@@ -76,12 +82,12 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
     const handleSort = (field: string) => {
         const currentSort = filters.sort;
         const currentDirection = filters.direction || 'desc';
-        
+
         let newDirection: 'asc' | 'desc' = 'desc';
         if (currentSort === field) {
             newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
         }
-        
+
         const params: any = { ...filters, sort: field, direction: newDirection };
         router.get('/pre-orders', params, { preserveState: true, replace: true });
     };
@@ -90,8 +96,8 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
         if (filters.sort !== field) {
             return <ArrowUpDown className="ml-2 size-4" />;
         }
-        return filters.direction === 'asc' ? 
-            <ArrowUp className="ml-2 size-4" /> : 
+        return filters.direction === 'asc' ?
+            <ArrowUp className="ml-2 size-4" /> :
             <ArrowDown className="ml-2 size-4" />;
     };
 
@@ -124,14 +130,14 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
             document.body.appendChild(textArea);
             textArea.focus();
             textArea.select();
-            
+
             try {
                 document.execCommand('copy');
                 toast.success('Message copied to clipboard!');
             } catch (fallbackErr) {
                 toast.error('Failed to copy message');
             }
-            
+
             document.body.removeChild(textArea);
         }
     };
@@ -143,21 +149,21 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
         message += `Client: ${preOrder.client_name}\n`;
         message += `Phone: ${preOrder.phone_number}\n`;
         message += "Status: ✅ PAID\n\n";
-        
+
         message += "*Collection Information:*\n";
         message += `Day: ${preOrder.collection_day?.name}\n`;
         message += `Collection Branch: ${preOrder.collection_branch?.name}\n`;
-        
+
         if (preOrder.registering_branch) {
             message += `Registering Branch: ${preOrder.registering_branch.name}\n`;
         }
-        
+
         message += "*Total Amount: $" + preOrder.total_amount + "*\n";
         message += "\n*Payment Status: PAID*\n";
         message += "_Thank you for your order! Please keep this message for your records._\n";
         message += "\n---";
         message += "\nGenerated on: " + new Date().toLocaleString();
-        
+
         return message;
     };
 
@@ -166,8 +172,8 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
     const [selectAll, setSelectAll] = useState(false);
 
     const handleSelectOrder = (orderId: number) => {
-        setSelectedOrders(prev => 
-            prev.includes(orderId) 
+        setSelectedOrders(prev =>
+            prev.includes(orderId)
                 ? prev.filter(id => id !== orderId)
                 : [...prev, orderId]
         );
@@ -197,14 +203,14 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
             return;
         }
 
-        router.post('/pre-orders/send-bulk-sms-reminders', 
+        router.post('/pre-orders/send-bulk-sms-reminders',
             { order_ids: pendingOrders },
             {
                 onSuccess: (page: any) => {
                     toast.success(page.props.success as string);
                     setSelectedOrders([]);
                     setSelectAll(false);
-                    
+
                     // Show detailed results if available
                     if (page.props.sms_results && Array.isArray(page.props.sms_results)) {
                         (page.props.sms_results as string[]).forEach(result => {
@@ -303,25 +309,49 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                     </Select>
                     <Button onClick={handleFilter}>Filter</Button>
 
-                    {/* Export PDF Button - Show only if user has permission to view all pre-orders */}
+                    {/* Export Dropdown - Show only if user has permission to view all pre-orders */}
                     {canViewAllOrders && (
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                const params = new URLSearchParams();
-                                if (search) params.append('search', search);
-                                if (status !== 'all') params.append('status', status);
-                                if (branchId !== 'all') params.append('branch_id', branchId);
-                                if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
-                                if (filters?.sort) params.append('sort', filters.sort);
-                                if (filters?.direction) params.append('direction', filters.direction);
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline">
+                                    <DownloadIcon className="mr-2 size-4" />
+                                    Export
+                                    <ChevronDownIcon className="ml-2 size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => {
+                                    const params = new URLSearchParams();
+                                    if (search) params.append('search', search);
+                                    if (status !== 'all') params.append('status', status);
+                                    if (branchId !== 'all') params.append('branch_id', branchId);
+                                    if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+                                    if (filters?.sort) params.append('sort', filters.sort);
+                                    if (filters?.direction) params.append('direction', filters.direction);
+                                    params.append('format', 'pdf');
 
-                                window.location.href = `/pre-orders/export?${params.toString()}`;
-                            }}
-                        >
-                            <DownloadIcon className="mr-2 size-4" />
-                            Export PDF
-                        </Button>
+                                    window.location.href = `/pre-orders/export?${params.toString()}`;
+                                }}>
+                                    <FileTextIcon className="mr-2 size-4" />
+                                    Export as PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                    const params = new URLSearchParams();
+                                    if (search) params.append('search', search);
+                                    if (status !== 'all') params.append('status', status);
+                                    if (branchId !== 'all') params.append('branch_id', branchId);
+                                    if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+                                    if (filters?.sort) params.append('sort', filters.sort);
+                                    if (filters?.direction) params.append('direction', filters.direction);
+                                    params.append('format', 'excel');
+
+                                    window.location.href = `/pre-orders/export?${params.toString()}`;
+                                }}>
+                                    <TableIcon className="mr-2 size-4" />
+                                    Export as Excel
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                 </div>
 
@@ -384,7 +414,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                         </div>
                                     </TableHead>
                                 )}
-                                <TableHead 
+                                <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleSort('order_number')}
                                 >
@@ -393,7 +423,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                         <SortIcon field="order_number" />
                                     </div>
                                 </TableHead>
-                                <TableHead 
+                                <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleSort('client_name')}
                                 >
@@ -402,7 +432,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                         <SortIcon field="client_name" />
                                     </div>
                                 </TableHead>
-                                <TableHead 
+                                <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleSort('phone_number')}
                                 >
@@ -418,7 +448,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                 <TableHead>Registering Branch</TableHead>
                                 <TableHead>Collection Day</TableHead>
                                 <TableHead>Products</TableHead>
-                                <TableHead 
+                                <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleSort('status')}
                                 >
@@ -427,7 +457,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                         <SortIcon field="status" />
                                     </div>
                                 </TableHead>
-                                <TableHead 
+                                <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleSort('total_amount')}
                                 >
@@ -438,7 +468,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                 </TableHead>
                                 {canViewAuditTrail && (
                                     <>
-                                        <TableHead 
+                                        <TableHead
                                             className="cursor-pointer hover:bg-muted/50"
                                             onClick={() => handleSort('created_at')}
                                         >
@@ -503,9 +533,8 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                         </TableCell>
                                         <TableCell>
                                             <span
-                                                className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                                                    statusColors[order.status]
-                                                }`}
+                                                className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusColors[order.status]
+                                                    }`}
                                             >
                                                 {order.status}
                                             </span>

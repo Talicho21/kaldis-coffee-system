@@ -66,13 +66,13 @@ class PreOrderController extends Controller
         // Sorting
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
-        
+
         // Validate sort fields
         $allowedSorts = ['id', 'order_number', 'client_name', 'phone_number', 'status', 'total_amount', 'created_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
-        
+
         if (!in_array($sortDirection, ['asc', 'desc'])) {
             $sortDirection = 'desc';
         }
@@ -157,7 +157,7 @@ class PreOrderController extends Controller
             'items.*.product_id' => ['required', 'integer', 'exists:pre_order_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
-        
+
         // Prepend +251 to phone number (remove any non-digits first)
         $cleanedPhone = preg_replace('/[^0-9]/', '', $validated['phone_number']);
         $validated['phone_number'] = '+251' . $cleanedPhone;
@@ -266,7 +266,7 @@ class PreOrderController extends Controller
         // 4. Otherwise - no permission to edit
 
         $canEdit = false;
-        
+
         if ($user->can('update pre-orders')) {
             $canEdit = true;
         } elseif ($user->can('edit other users pre-orders')) {
@@ -310,7 +310,7 @@ class PreOrderController extends Controller
 
         // Permission check logic (same as edit method)
         $canEdit = false;
-        
+
         if ($user->can('update pre-orders')) {
             $canEdit = true;
         } elseif ($user->can('edit other users pre-orders')) {
@@ -340,7 +340,7 @@ class PreOrderController extends Controller
             'items.*.product_id' => ['required', 'integer', 'exists:pre_order_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
-        
+
         // Prepend +251 to phone number (remove any non-digits first)
         $cleanedPhone = preg_replace('/[^0-9]/', '', $validated['phone_number']);
         $validated['phone_number'] = '+251' . $cleanedPhone;
@@ -416,10 +416,10 @@ class PreOrderController extends Controller
                 try {
                     // Reload relationships for SMS
                     $preOrder->load(['collectionDay', 'collectionBranch', 'items.product']);
-                    
+
                     $smsNotification = new PreOrderPaidGeezSMSNotification($preOrder);
                     $smsSent = $smsNotification->sendCustomerSMS();
-                    
+
                     if ($smsSent) {
                         Log::info('SMS sent to customer via GeezSMS on status update', [
                             'pre_order_id' => $preOrder->id,
@@ -503,7 +503,7 @@ class PreOrderController extends Controller
         }
 
         $smsService = app(GeezSMSService::class);
-        
+
         if (!$smsService->isConfigured()) {
             return back()->withErrors(['error' => 'GeezSMS service is not configured. Please check your SMS settings.']);
         }
@@ -516,7 +516,7 @@ class PreOrderController extends Controller
             try {
                 $message = $this->generateReminderMessage($order);
                 $smsSent = $smsService->sendMessage($order->phone_number, $message);
-                
+
                 if ($smsSent) {
                     $successCount++;
                     $results[] = "✅ SMS sent to {$order->client_name} (Order: {$order->order_number})";
@@ -546,7 +546,7 @@ class PreOrderController extends Controller
         }
 
         $summaryMessage = "Bulk SMS reminder completed: {$successCount} successful, {$failureCount} failed.";
-        
+
         return back()
             ->with('success', $summaryMessage)
             ->with('sms_results', $results);
@@ -557,21 +557,21 @@ class PreOrderController extends Controller
      */
     private function generateReminderMessage(PreOrder $preOrder): string
     {
-        $message  = "KALDIS - Payment Reminder\n\n";
+        $message = "KALDIS - Payment Reminder\n\n";
         $message .= "Order Number: {$preOrder->order_number}\n";
         $message .= "Dear {$preOrder->client_name},\n\n";
         $message .= "We noticed your order is still awaiting payment.\n\n";
-        
+
         $message .= "Collection Details:\n";
         $message .= "- Day: {$preOrder->collectionDay->name}\n";
         $message .= "- Branch: {$preOrder->collectionBranch->name}\n\n";
-        
+
         $message .= "Total Amount: {$preOrder->total_amount} ETB\n";
         $message .= "Items Ordered: " . count($preOrder->items) . "\n\n";
 
         $message .= "Kindly complete your payment at your earliest convenience.\n";
         $message .= "Thank you for choosing KALDIS!";
-        
+
         return $message;
     }
 
@@ -605,17 +605,17 @@ class PreOrderController extends Controller
         // Generate Telegram message if status is changed to "Paid"
         $telegramMessage = null;
         $smsStatus = null;
-        
+
         if ($validated['status'] === 'Paid') {
             // Reload relationships for message generation
             $preOrder->load(['collectionDay', 'collectionBranch', 'items.product']);
             $telegramMessage = $this->generateTelegramMessage($preOrder);
-            
+
             // Send SMS notification to customer using GeezSMS
             try {
                 $smsNotification = new PreOrderPaidGeezSMSNotification($preOrder);
                 $smsSent = $smsNotification->sendCustomerSMS();
-                
+
                 if ($smsSent) {
                     $smsStatus = 'SMS notification sent to customer successfully via GeezSMS.';
                     Log::info('SMS sent to customer via GeezSMS', [
@@ -655,30 +655,30 @@ class PreOrderController extends Controller
         $message .= "Client: {$preOrder->client_name}\n";
         $message .= "Phone: {$preOrder->phone_number}\n";
         $message .= "Status: ✅ PAID\n\n";
-        
+
         $message .= "*Collection Information:*\n";
         $message .= "Day: {$preOrder->collectionDay->name}\n";
         $message .= "Collection Branch: {$preOrder->collectionBranch->name}\n\n";
-        
+
         if ($preOrder->registering_branch) {
             $message .= "Registering Branch: {$preOrder->registering_branch->name}\n";
         }
-        
+
         $message .= "*Order Items:*\n";
         foreach ($preOrder->items as $item) {
             $productName = $item->product ? $item->product->product_name : 'Product';
             $message .= "• {$productName} ({$item->quantity}x) - \${$item->subtotal}\n";
         }
-        
+
         $message .= "\n*Total Amount: \{$preOrder->total_amount}ETB*\n";
         $message .= "_Thank you for your order! Please keep this message for your records._\n";
         $message .= "\n---";
-        
+
         return $message;
     }
 
     /**
-     * Export pre-orders to PDF
+     * Export pre-orders to PDF or Excel (CSV)
      */
     public function export(Request $request)
     {
@@ -725,12 +725,12 @@ class PreOrderController extends Controller
         // Sorting
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
-        
+
         $allowedSorts = ['id', 'order_number', 'client_name', 'phone_number', 'status', 'total_amount', 'created_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
-        
+
         if (!in_array($sortDirection, ['asc', 'desc'])) {
             $sortDirection = 'desc';
         }
@@ -738,9 +738,16 @@ class PreOrderController extends Controller
         // Get all orders (no pagination for export)
         $orders = $query->orderBy($sortField, $sortDirection)->get();
 
+        $format = $request->query('format', 'pdf');
+
+        if ($format === 'excel') {
+            return $this->exportCsv($orders);
+        }
+
+        // Default to PDF
         // Get branch name for title
         $branchName = 'All Branches';
-        if ($branchId) {
+        if ($branchId = $request->query('branch_id')) {
             $branch = Branch::find($branchId);
             $branchName = $branch ? $branch->name : 'Unknown Branch';
         }
@@ -760,6 +767,61 @@ class PreOrderController extends Controller
         ])->setPaper('a4', 'landscape');
 
         return $pdf->download('pre-orders-' . now()->format('Y-m-d-His') . '.pdf');
+    }
+
+    private function exportCsv($orders)
+    {
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="pre-orders-' . date('Y-m-d-His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+        ];
+
+        return response()->stream(function () use ($orders) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            // BOM for UTF-8 Excel compatibility
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+            // Header row
+            fputcsv($out, [
+                'Order #',
+                'Client Name',
+                'Phone Number',
+                'Order Type',
+                'Collection Day',
+                'Collection Branch',
+                'Total Amount',
+                'Notes',
+                'Date Created'
+            ]);
+
+            // Data rows
+            foreach ($orders as $order) {
+                $products = $order->items->map(function ($item) {
+                    return ($item->product->product_name ?? 'Unknown') . " (" . $item->quantity . ")";
+                })->implode(', ');
+
+                fputcsv($out, [
+                    $order->order_number,
+                    $order->client_name,
+                    $order->phone_number,
+                    $order->orderType->name ?? '-',
+                    $order->collectionBranch->name ?? '-',
+                    $order->registeringBranch->name ?? '-',
+                    $order->collectionDay->name ?? '-',
+                    $products,
+                    $order->status,
+                    $order->total_amount,
+                    $order->notes ?? '',
+                    $order->created_at->format('Y-m-d H:i:s'),
+                ]);
+            }
+            fclose($out);
+        }, 200, $headers);
     }
 
     private function generateOrderNumber(): string
