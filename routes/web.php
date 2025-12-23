@@ -23,13 +23,24 @@ use App\Http\Controllers\{
     PositionController,
     EmployeeController,
     RejectedEvaluationsController,
-    EvaluatorCompletionController
+    EvaluatorCompletionController,
+    SyncController,
+    SmsBalanceController,
+    PreOrderDashboardController
 };
 
 Route::get('/', fn () => Inertia::render('welcome'))->name('home');
 
+// Offline fallback page for PWA
+Route::get('/offline', fn () => Inertia::render('offline'))->name('offline');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', fn () => Inertia::render('dashboard'))->name('dashboard');
+
+    // Offline Sync API Endpoints
+    Route::post('sync/inventory-counts', [SyncController::class, 'syncInventoryCount'])->name('sync.inventory-counts');
+    Route::post('sync/evaluations', [SyncController::class, 'syncEvaluation'])->name('sync.evaluations');
+    Route::get('sync/pending-count', [SyncController::class, 'getPendingCount'])->name('sync.pending-count');
 
     // Permissions
     Route::resource('permissions', PermissionController::class)->except(['show', 'create', 'edit'])
@@ -113,6 +124,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Inventory Counts
     Route::middleware('permission:view inventory counts')->group(function () {
+        Route::post('inventory-counts/auto-save', [\App\Http\Controllers\InventoryCountController::class, 'autoSave'])->name('inventory-counts.auto-save');
+        Route::get('inventory-counts/previous', [\App\Http\Controllers\InventoryCountController::class, 'getPreviousCounts'])->name('inventory-counts.previous');
         Route::post('inventory-counts/bulk', [\App\Http\Controllers\InventoryCountController::class, 'bulkStore'])->name('inventory-counts.bulk');
         Route::put('inventory-counts/{inventoryCount}/approve', [\App\Http\Controllers\InventoryCountController::class, 'approve'])->name('inventory-counts.approve');
         Route::put('inventory-counts/{inventoryCount}/unapprove', [\App\Http\Controllers\InventoryCountController::class, 'unapprove'])->name('inventory-counts.unapprove');
@@ -172,6 +185,35 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:view inventory count summary')->group(function () {
         Route::get('reports/inventory-count-summary', [\App\Http\Controllers\InventoryCountSummaryController::class, 'summary'])->name('reports.inventory-count-summary');
         Route::get('reports/inventory-count-summary/export', [\App\Http\Controllers\InventoryCountSummaryController::class, 'export'])->name('reports.inventory-count-summary.export');
+    });
+
+    // Pre-Orders
+    Route::middleware('permission:view pre-orders')->group(function () {
+        Route::get('pre-orders/dashboard', [PreOrderDashboardController::class, 'index'])->name('pre-orders.dashboard');
+        Route::get('pre-orders/export', [\App\Http\Controllers\PreOrderController::class, 'export'])->name('pre-orders.export')->middleware('permission:view all pre-orders');
+        Route::post('pre-orders/{preOrder}/update-status', [\App\Http\Controllers\PreOrderController::class, 'updateStatus'])->name('pre-orders.update-status')->middleware('permission:update pre-order status');
+        Route::post('pre-orders/send-bulk-sms-reminders', [\App\Http\Controllers\PreOrderController::class, 'sendBulkSmsReminders'])->name('pre-orders.send-bulk-sms-reminders')->middleware('permission:send bulk sms reminders');
+        Route::resource('pre-orders', \App\Http\Controllers\PreOrderController::class);
+    });
+
+    // My Branch Orders
+    Route::middleware('permission:view my branch orders')->group(function () {
+        Route::get('my-branch-orders', [\App\Http\Controllers\MyBranchOrdersController::class, 'index'])->name('my-branch-orders.index');
+        Route::get('my-branch-orders/export', [\App\Http\Controllers\MyBranchOrdersController::class, 'export'])->name('my-branch-orders.export');
+        Route::post('my-branch-orders/{order}/collect', [\App\Http\Controllers\MyBranchOrdersController::class, 'collect'])->name('my-branch-orders.collect')->middleware('permission:collect branch orders');
+        Route::post('my-branch-orders/{order}/uncollect', [\App\Http\Controllers\MyBranchOrdersController::class, 'uncollect'])->name('my-branch-orders.uncollect')->middleware('permission:collect branch orders');
+    });
+
+    // SMS Balance & Management
+    Route::middleware('permission:view sms balance')->group(function () {
+        Route::get('sms-balance', [SmsBalanceController::class, 'index'])->name('sms-balance.index');
+        Route::get('sms-balance/api', [SmsBalanceController::class, 'getBalance'])->name('sms-balance.api');
+    });
+
+    // SMS Settings Management (Activate/Deactivate)
+    Route::middleware('permission:manage sms settings')->group(function () {
+        Route::post('sms-balance/activate', [SmsBalanceController::class, 'activate'])->name('sms-balance.activate');
+        Route::post('sms-balance/deactivate', [SmsBalanceController::class, 'deactivate'])->name('sms-balance.deactivate');
     });
 });
 

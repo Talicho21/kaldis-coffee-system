@@ -44,6 +44,8 @@ import {
   TrendingUp,
   Package,
   Warehouse,
+  ShoppingCart,
+  MessageSquare,
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -53,6 +55,7 @@ const sections: NavSection[] = [
     icon: LayoutDashboard,
     items: [
       { title: 'Overview', href: '/dashboard', icon: LayoutDashboard, permission: 'view dashboard' },
+      { title: 'Pre-Orders Analysis', href: '/pre-orders/dashboard', icon: ShoppingCart, permission: 'view pre-orders' },
       { title: 'Evaluation Summary', href: '/reports/evaluation-summary', icon: BarChart3, permission: 'view evaluation summary' },
       { title: 'Branch Managers Evaluation Summary', href: '/reports/branch-manager-evaluation-summary', icon: BarChart3, permission: 'view branch manager evaluation summary' },
       { title: 'Inventory Count Summary', href: '/reports/inventory-count-summary', icon: Warehouse, permission: 'view inventory count summary' },
@@ -73,6 +76,7 @@ const sections: NavSection[] = [
       { title: 'Other Evaluables', href: '/other-evaluables', icon: FileText, permission: 'view other evaluables' },
       { title: 'Child Categories', href: '/child-categories', icon: FolderKey, permission: 'view child categories' },
       { title: 'Products', href: '/products', icon: ClipboardList, permission: 'view products' },
+      { title: 'SMS Management', href: '/sms-balance', icon: MessageSquare, permission: 'view sms balance' },
     ],
   },
   {
@@ -108,6 +112,18 @@ const sections: NavSection[] = [
     items: [
       { title: 'Inventory Counts', href: '/inventory-counts', icon: Package, permission: 'view inventory counts' },
       { title: 'Inventory Completion Tracking', href: '/inventory-completion-tracking', icon: ClipboardCheck, permission: 'view inventory completion tracking' },
+    ],
+  },
+  {
+    label: 'Pre-Orders',
+    icon: ShoppingCart,
+    items: [
+      { title: 'New Pre-Order', href: '/pre-orders/create', icon: ClipboardList, permission: 'create pre-orders' },
+      { title: 'All Pre-Orders', href: '/pre-orders', icon: ShoppingCart, permission: 'view pre-orders' },
+      { title: 'My Branch Orders', href: '/my-branch-orders', icon: Package, permission: 'view my branch orders' },
+      { title: 'Pre-Order Products', href: '/settings/pre-order-products', icon: Package, permission: 'view pre-order products' },
+      { title: 'Order Types', href: '/settings/order-types', icon: ListChecks, permission: 'view order types' },
+      { title: 'Collection Days', href: '/settings/collection-days', icon: CalendarDays, permission: 'view collection days' },
     ],
   },
 ];

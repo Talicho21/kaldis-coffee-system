@@ -23,7 +23,7 @@ type PageProps = {
 export default function EvaluationSummaryPage({ rows, evaluationNames, branches, departments, periods, request }: PageProps) {
   const [branchId, setBranchId] = React.useState<string>(request?.branch_id ?? '')
   const [departmentId, setDepartmentId] = React.useState<string>(request?.department_id ?? '')
-  const [periodId, setPeriodId] = React.useState<string>(request?.period_id ?? '')
+  const [periodId, setPeriodId] = React.useState<string>(request?.period_id ?? (periods.length > 0 ? String(periods[0].id) : ''))
   const [visible, setVisible] = React.useState<Record<string, boolean>>(
     () => evaluationNames.reduce((acc, name) => { acc[name] = true; return acc }, {} as Record<string, boolean>)
   )

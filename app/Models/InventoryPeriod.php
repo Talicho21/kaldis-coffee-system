@@ -6,10 +6,23 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 
 class InventoryPeriod extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saved(function () {
+            Cache::forget('inventory_periods_all');
+            Cache::forget('inventory_periods_active');
+        });
+        static::deleted(function () {
+            Cache::forget('inventory_periods_all');
+            Cache::forget('inventory_periods_active');
+        });
+    }
 
     protected $fillable = [
         'inventory_period_name',

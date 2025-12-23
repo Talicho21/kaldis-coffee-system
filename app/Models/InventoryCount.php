@@ -16,6 +16,7 @@ class InventoryCount extends Model
         'child_category_id',
         'product_id',
         'count',
+        'unit_price',
         'is_approved',
         'approved_by',
         'approved_at',
@@ -25,6 +26,7 @@ class InventoryCount extends Model
 
     protected $casts = [
         'count' => 'decimal:2',
+        'unit_price' => 'decimal:2',
         'is_approved' => 'boolean',
         'approved_at' => 'datetime',
     ];

@@ -27,6 +27,7 @@ type Paginated<T> = {
 type Filters = {
 	search?: string;
 	branch_id?: string;
+	inventory_period_id?: string;
 	child_category_id?: string;
 	approval_status?: string;
 };
@@ -61,6 +62,7 @@ export default function InventoryCountsIndex({
 
 	const [search, setSearch] = useState(filters.search ?? '');
 	const [branchFilter, setBranchFilter] = useState<string>(filters.branch_id ?? 'all');
+	const [periodFilter, setPeriodFilter] = useState<string>(filters.inventory_period_id ?? (inventoryPeriods.length > 0 ? String(inventoryPeriods[0].id) : 'all'));
 	const [categoryFilter, setCategoryFilter] = useState<string>(filters.child_category_id ?? 'all');
 	const [approvalFilter, setApprovalFilter] = useState<string>(filters.approval_status ?? 'all');
 	const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -69,6 +71,7 @@ export default function InventoryCountsIndex({
 		const params: Filters = {};
 		if (search) params.search = search;
 		if (branchFilter !== 'all') params.branch_id = branchFilter;
+		if (periodFilter !== 'all') params.inventory_period_id = periodFilter;
 		if (categoryFilter !== 'all') params.child_category_id = categoryFilter;
 		if (approvalFilter !== 'all') params.approval_status = approvalFilter;
 		
@@ -92,7 +95,10 @@ export default function InventoryCountsIndex({
 		router.put(route('inventory-counts.approve', id), {}, {
 			preserveScroll: true,
 			onSuccess: () => toast.success('Approved successfully'),
-			onError: () => toast.error('Approval failed'),
+			onError: (errors) => {
+				const errorMessage = errors?.error || 'Approval failed';
+				toast.error(errorMessage);
+			},
 		});
 	}
 
@@ -101,7 +107,10 @@ export default function InventoryCountsIndex({
 		router.put(route('inventory-counts.unapprove', id), {}, {
 			preserveScroll: true,
 			onSuccess: () => toast.success('Unapproved successfully'),
-			onError: () => toast.error('Unapprove failed'),
+			onError: (errors) => {
+				const errorMessage = errors?.error || 'Unapprove failed';
+				toast.error(errorMessage);
+			},
 		});
 	}
 
@@ -116,7 +125,10 @@ export default function InventoryCountsIndex({
 				toast.success(`${selectedIds.length} item(s) approved successfully`);
 				setSelectedIds([]);
 			},
-			onError: () => toast.error('Bulk approval failed'),
+			onError: (errors) => {
+				const errorMessage = errors?.error || 'Bulk approval failed';
+				toast.error(errorMessage);
+			},
 		});
 	}
 
@@ -132,7 +144,10 @@ export default function InventoryCountsIndex({
 				toast.success(`${selectedIds.length} item(s) unapproved successfully`);
 				setSelectedIds([]);
 			},
-			onError: () => toast.error('Bulk unapprove failed'),
+			onError: (errors) => {
+				const errorMessage = errors?.error || 'Bulk unapprove failed';
+				toast.error(errorMessage);
+			},
 		});
 	}
 
@@ -183,7 +198,7 @@ export default function InventoryCountsIndex({
 								handleFilter();
 							}}
 						>
-							<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
+							<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
 								<Input 
 									value={search} 
 									onChange={(e) => setSearch(e.target.value)} 
@@ -208,6 +223,22 @@ export default function InventoryCountsIndex({
 										</SelectContent>
 									</Select>
 								)}
+								<Select
+									value={periodFilter}
+									onValueChange={setPeriodFilter}
+								>
+									<SelectTrigger className="w-full">
+										<SelectValue placeholder="Filter by period" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">All Periods</SelectItem>
+										{inventoryPeriods.map((period) => (
+											<SelectItem key={period.id} value={String(period.id)}>
+												{period.inventory_period_name} {period.status !== 'active' ? '(Closed)' : ''}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
 								<Select
 									value={categoryFilter}
 									onValueChange={setCategoryFilter}
@@ -238,7 +269,7 @@ export default function InventoryCountsIndex({
 									</SelectContent>
 								</Select>
 								<Button type="submit" variant="outline" className="w-full">
-									Search
+									Apply
 								</Button>
 							</div>
 						</form>

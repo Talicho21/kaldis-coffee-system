@@ -7,6 +7,7 @@ use App\Models\EvaluationResponse;
 use App\Models\User;
 use App\Models\Employee;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +20,17 @@ class EvaluatorCompletionController extends Controller
         $status = $request->query('status');
         $evaluationNames = $request->query('evaluation_names');
         
-        if ($periodId === 'all' || $periodId === '') {
+        // Cache evaluation periods for 10 minutes
+        $periods = Cache::remember('evaluation_periods_all', 600, fn() => 
+            \App\Models\EvaluationPeriod::select('id', 'evaluation_period_name')
+                ->orderBy('id', 'desc')
+                ->get()
+        );
+        
+        // Default to latest period if not specified
+        if ($periodId === null || $periodId === '') {
+            $periodId = $periods->first()?->id;
+        } elseif ($periodId === 'all') {
             $periodId = null;
         }
         
@@ -49,18 +60,15 @@ class EvaluatorCompletionController extends Controller
                     });
             })
             ->get();
-
-        // Get evaluation periods for filter
-        $periods = \App\Models\EvaluationPeriod::select('id', 'evaluation_period_name')
-            ->orderBy('id', 'desc')
-            ->get();
         
-        // Get all evaluations for filter dropdown with distinct names
-        $allEvaluations = Evaluation::select('id', 'name')
-            ->orderBy('name')
-            ->get()
-            ->unique('name')
-            ->values();
+        // Cache all evaluations for filter dropdown (10 minutes)
+        $allEvaluations = Cache::remember('evaluations_unique_names', 600, fn() => 
+            Evaluation::select('id', 'name')
+                ->orderBy('name')
+                ->get()
+                ->unique('name')
+                ->values()
+        );
 
         // Group evaluators by period - calculate stats per period
         $evaluatorsByPeriod = [];
@@ -95,6 +103,11 @@ class EvaluatorCompletionController extends Controller
                 $allEvaluatees = collect();
                 
                 foreach ($evaluations as $evaluation) {
+                    // Skip if evaluatesGroup is null
+                    if (!$evaluation->evaluatesGroup) {
+                        continue;
+                    }
+                    
                     $evaluableType = $evaluation->evaluatesGroup->evaluable_type;
                     
                     // Get the appropriate evaluatees based on evaluable_type
@@ -152,6 +165,11 @@ class EvaluatorCompletionController extends Controller
                 // Get detailed evaluation information for this period
                 $evaluationDetails = [];
                 foreach ($evaluations as $evaluation) {
+                    // Skip if evaluatesGroup is null
+                    if (!$evaluation->evaluatesGroup) {
+                        continue;
+                    }
+                    
                     $evaluableType = $evaluation->evaluatesGroup->evaluable_type;
                     
                     // Get the appropriate evaluatees based on evaluable_type
@@ -263,6 +281,11 @@ class EvaluatorCompletionController extends Controller
                     $hasBeenEvaluated = false;
                     
                     foreach ($evaluations as $evaluation) {
+                        // Skip if evaluatesGroup is null
+                        if (!$evaluation->evaluatesGroup) {
+                            continue;
+                        }
+                        
                         $evaluableType = $evaluation->evaluatesGroup->evaluable_type;
                         
                         $hasResponse = EvaluationResponse::query()
@@ -279,8 +302,8 @@ class EvaluatorCompletionController extends Controller
                     }
                     
                     // Get the appropriate name based on the first evaluation's evaluable_type
-                    $firstEvaluation = $evaluations->first();
-                    $evaluableType = $firstEvaluation ? $firstEvaluation->evaluatesGroup->evaluable_type : 'employee';
+                    $firstEvaluation = $evaluations->first(fn($e) => $e->evaluatesGroup !== null);
+                    $evaluableType = $firstEvaluation?->evaluatesGroup?->evaluable_type ?? 'employee';
                     
                     $name = '';
                     if ($evaluableType === 'employee') {

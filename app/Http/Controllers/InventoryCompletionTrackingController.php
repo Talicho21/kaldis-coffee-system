@@ -11,6 +11,7 @@ use App\Models\InventoryPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -57,14 +58,29 @@ class InventoryCompletionTrackingController extends Controller
      */
     public function index(Request $request): Response
     {
-        // Get all inventory periods for display
-        $allInventoryPeriods = InventoryPeriod::all(['id', 'inventory_period_name', 'fiscal_year_id', 'status']);
+        // Cache inventory periods for 10 minutes
+        $allInventoryPeriods = Cache::remember('inventory_periods_all', 600, fn() => 
+            InventoryPeriod::orderByDesc('id')->get(['id', 'inventory_period_name', 'fiscal_year_id', 'status'])
+        );
+        
+        // Cache fiscal years for 10 minutes
+        $fiscalYears = Cache::remember('fiscal_years_all', 600, fn() => 
+            FiscalYear::orderByDesc('id')->get(['id', 'name'])
+        );
+        
+        // Default to latest period if not specified
+        $periodId = $request->query('inventory_period_id');
+        if ($periodId === null || $periodId === '') {
+            $periodId = $allInventoryPeriods->first()?->id;
+        } elseif ($periodId === 'all') {
+            $periodId = null;
+        }
         
         // Build query for filtered periods to calculate completion
         $query = InventoryPeriod::query();
 
-        if ($request->filled('inventory_period_id')) {
-            $query->where('id', $request->inventory_period_id);
+        if ($periodId) {
+            $query->where('id', $periodId);
         }
 
         if ($request->filled('fiscal_year_id')) {
@@ -72,10 +88,18 @@ class InventoryCompletionTrackingController extends Controller
         }
 
         $inventoryPeriods = $query->get();
-        $branches = Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
-            ->whereNotIn('id', [3, 5, 48])
-            ->get();
-        $totalChildCategories = ChildCategory::count();
+        
+        // Cache branches for 10 minutes
+        $branches = Cache::remember('branches_inventory_tracking', 600, fn() => 
+            Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
+                ->whereNotIn('id', [3, 5, 48])
+                ->get()
+        );
+        
+        // Cache total child categories count for 10 minutes
+        $totalChildCategories = Cache::remember('child_categories_count', 600, fn() => 
+            ChildCategory::count()
+        );
 
         $statusFilter = $request->query('status');
 
@@ -98,18 +122,15 @@ class InventoryCompletionTrackingController extends Controller
             $completionDataArray = array_values($completionDataArray);
         }
 
-        // Debug: Log the data
-        \Log::info('Inventory Completion Tracking Data', [
-            'completionData' => $completionDataArray,
-            'inventoryPeriods' => $allInventoryPeriods->toArray(),
-            'fiscalYears' => FiscalYear::all(['id', 'name'])->toArray(),
-        ]);
-
         return Inertia::render('inventory-completion-tracking/index', [
             'completionData' => $completionDataArray,
             'inventoryPeriods' => $allInventoryPeriods->toArray(),
-            'fiscalYears' => FiscalYear::all(['id', 'name'])->toArray(),
-            'filters' => $request->only(['inventory_period_id', 'fiscal_year_id', 'status']),
+            'fiscalYears' => $fiscalYears->toArray(),
+            'filters' => [
+                'inventory_period_id' => $periodId ? (string) $periodId : null,
+                'fiscal_year_id' => $request->query('fiscal_year_id'),
+                'status' => $statusFilter,
+            ],
         ]);
     }
 

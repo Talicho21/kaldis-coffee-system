@@ -1,6 +1,9 @@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, usePage, Link } from '@inertiajs/react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart3, ShoppingBag, TrendingUp, Users } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [
 	{
@@ -21,7 +24,7 @@ export default function Dashboard() {
 	return (
 		<AppLayout breadcrumbs={breadcrumbs}>
 			<Head title="Dashboard" />
-			<div className=" ">
+			<div className="space-y-8">
 				{/* Welcome Section with Coffee Cup */}
 				<div className="relative w-full overflow-hidden">
 					<div className="relative z-10 p-12 md:p-16">
@@ -205,6 +208,83 @@ export default function Dashboard() {
 					</div>
 					<div className="absolute top-1/2 right-12 opacity-5 dark:opacity-3">
 						<div className="h-24 w-24 rounded-full bg-amber-900"></div>
+					</div>
+				</div>
+
+				{/* Dashboard Actions */}
+				<div className="container mx-auto px-4">
+					<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+						<Card className="transition-shadow hover:shadow-lg">
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<CardTitle className="text-sm font-medium">Pre-Orders Analysis</CardTitle>
+								<ShoppingBag className="h-4 w-4 text-muted-foreground" />
+							</CardHeader>
+							<CardContent>
+								<CardDescription>
+									View comprehensive analytics and insights for pre-orders including sales trends and performance metrics.
+								</CardDescription>
+								<Link href="/pre-orders/dashboard">
+									<Button variant="outline" className="w-full mt-4">
+										<BarChart3 className="mr-2 h-4 w-4" />
+										View Analysis
+									</Button>
+								</Link>
+							</CardContent>
+						</Card>
+
+						<Card className="transition-shadow hover:shadow-lg">
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<CardTitle className="text-sm font-medium">Evaluation Reports</CardTitle>
+								<TrendingUp className="h-4 w-4 text-muted-foreground" />
+							</CardHeader>
+							<CardContent>
+								<CardDescription>
+									Access evaluation summaries and branch manager evaluation reports with detailed insights.
+								</CardDescription>
+								<Link href="/reports/evaluation-summary">
+									<Button variant="outline" className="w-full mt-4">
+										<TrendingUp className="mr-2 h-4 w-4" />
+										View Reports
+									</Button>
+								</Link>
+							</CardContent>
+						</Card>
+
+						<Card className="transition-shadow hover:shadow-lg">
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<CardTitle className="text-sm font-medium">Inventory Management</CardTitle>
+								<Users className="h-4 w-4 text-muted-foreground" />
+							</CardHeader>
+							<CardContent>
+								<CardDescription>
+									Manage inventory counts and track completion status across branches and departments.
+								</CardDescription>
+								<Link href="/inventory-counts">
+									<Button variant="outline" className="w-full mt-4">
+										<Users className="mr-2 h-4 w-4" />
+										Manage Inventory
+									</Button>
+								</Link>
+							</CardContent>
+						</Card>
+
+						<Card className="transition-shadow hover:shadow-lg">
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<CardTitle className="text-sm font-medium">System Administration</CardTitle>
+								<ShoppingBag className="h-4 w-4 text-muted-foreground" />
+							</CardHeader>
+							<CardContent>
+								<CardDescription>
+									Manage users, permissions, branches, and other system settings.
+								</CardDescription>
+								<Link href="/users">
+									<Button variant="outline" className="w-full mt-4">
+										<Users className="mr-2 h-4 w-4" />
+										Admin Panel
+									</Button>
+								</Link>
+							</CardContent>
+						</Card>
 					</div>
 				</div>
 			</div>

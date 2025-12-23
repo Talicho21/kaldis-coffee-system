@@ -22,7 +22,7 @@ type PageProps = {
 
 export default function BranchManagerEvaluationSummaryPage({ rows, departmentNames, branches, periods, request }: PageProps) {
   const [branchId, setBranchId] = React.useState<string>(request?.branch_id ?? '')
-  const [periodId, setPeriodId] = React.useState<string>(request?.period_id ?? '')
+  const [periodId, setPeriodId] = React.useState<string>(request?.period_id ?? (periods.length > 0 ? String(periods[0].id) : ''))
   const [departmentFilter, setDepartmentFilter] = React.useState<string>('')
   const [selectedManager, setSelectedManager] = React.useState<any>(null)
   const [modalOpen, setModalOpen] = React.useState(false)

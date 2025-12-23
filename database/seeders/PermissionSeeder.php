@@ -168,5 +168,44 @@ class PermissionSeeder extends Seeder
 
         // Inventory Completion Tracking
         Permission::firstOrCreate(['name' => 'view inventory completion tracking']);
+
+        // Pre-Order Products
+        Permission::firstOrCreate(['name' => 'view pre-order products']);
+        Permission::firstOrCreate(['name' => 'create pre-order products']);
+        Permission::firstOrCreate(['name' => 'update pre-order products']);
+        Permission::firstOrCreate(['name' => 'delete pre-order products']);
+
+        // Order Types
+        Permission::firstOrCreate(['name' => 'view order types']);
+        Permission::firstOrCreate(['name' => 'create order types']);
+        Permission::firstOrCreate(['name' => 'update order types']);
+        Permission::firstOrCreate(['name' => 'delete order types']);
+
+        // Collection Days
+        Permission::firstOrCreate(['name' => 'view collection days']);
+        Permission::firstOrCreate(['name' => 'create collection days']);
+        Permission::firstOrCreate(['name' => 'update collection days']);
+        Permission::firstOrCreate(['name' => 'delete collection days']);
+
+        // Pre-Orders
+        Permission::firstOrCreate(['name' => 'view pre-orders']);
+        Permission::firstOrCreate(['name' => 'view all pre-orders']); // View orders created by others
+        Permission::firstOrCreate(['name' => 'view pre-order details']); // View individual order details
+        Permission::firstOrCreate(['name' => 'create pre-orders']);
+        Permission::firstOrCreate(['name' => 'update pre-orders']);
+        Permission::firstOrCreate(['name' => 'edit own pre-orders']); // Edit only orders created by themselves
+        Permission::firstOrCreate(['name' => 'edit other users pre-orders']); // Edit orders created by other users
+        Permission::firstOrCreate(['name' => 'delete pre-orders']);
+        Permission::firstOrCreate(['name' => 'update pre-order status']);
+        Permission::firstOrCreate(['name' => 'send bulk sms reminders']); // Send bulk SMS reminders for pending orders
+        Permission::firstOrCreate(['name' => 'view pre-order audit trail']); // View created_by, updated_by, and date columns
+
+        // SMS Balance & Management
+        Permission::firstOrCreate(['name' => 'view sms balance']);
+        Permission::firstOrCreate(['name' => 'manage sms settings']); // Activate/Deactivate SMS service
+
+        // My Branch Orders
+        Permission::firstOrCreate(['name' => 'view my branch orders']);
+        Permission::firstOrCreate(['name' => 'collect branch orders']);
     }
 }

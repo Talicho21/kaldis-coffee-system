@@ -17,6 +17,7 @@ type Product = {
 	unit_cost?: number | null;
 	child_category_id: number | null;
 	child_category?: { id: number; child_name: string };
+	status: 'Active' | 'Inactive';
 };
 
 type ChildCategory = {
@@ -38,6 +39,7 @@ type PageProps = {
 	filters: {
 		search?: string;
 		child_category_id?: string;
+		status?: string;
 		per_page?: number;
 	};
 };
@@ -45,6 +47,7 @@ type PageProps = {
 export default function ProductsIndex({ products, childCategories = [], filters = {} }: PageProps) {
 	const [search, setSearch] = useState(filters.search ?? '');
 	const [categoryFilter, setCategoryFilter] = useState<string>(filters.child_category_id ?? 'all');
+	const [statusFilter, setStatusFilter] = useState<string>(filters.status ?? 'all');
 	const { can } = usePermission();
 
 	function handleSearch(e: React.FormEvent) {
@@ -52,6 +55,7 @@ export default function ProductsIndex({ products, childCategories = [], filters 
 		const params: Record<string, string> = {};
 		if (search) params.search = search;
 		if (categoryFilter !== 'all') params.child_category_id = categoryFilter;
+		if (statusFilter !== 'all') params.status = statusFilter;
 		
 		router.get('/products', params, {
 			preserveState: true,
@@ -90,6 +94,16 @@ export default function ProductsIndex({ products, childCategories = [], filters 
 									))}
 								</SelectContent>
 							</Select>
+							<Select value={statusFilter} onValueChange={setStatusFilter}>
+								<SelectTrigger className="w-40">
+									<SelectValue placeholder="Filter by status" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Statuses</SelectItem>
+									<SelectItem value="Active">Active</SelectItem>
+									<SelectItem value="Inactive">Inactive</SelectItem>
+								</SelectContent>
+							</Select>
 							<Button type="submit" variant="outline">
 								Search
 							</Button>
@@ -112,6 +126,7 @@ export default function ProductsIndex({ products, childCategories = [], filters 
 									<TableHead className="font-bold text-white">Product Code</TableHead>
 									<TableHead className="font-bold text-white">Unit Cost</TableHead>
 									<TableHead className="font-bold text-white">Child Category</TableHead>
+									<TableHead className="font-bold text-white">Status</TableHead>
 									<TableHead className="font-bold text-white">Actions</TableHead>
 								</TableRow>
 							</TableHeader>
@@ -123,6 +138,15 @@ export default function ProductsIndex({ products, childCategories = [], filters 
 										<TableCell>{item.product_code ?? '-'}</TableCell>
 										<TableCell>{item.unit_cost ? `${Number(item.unit_cost).toFixed(2)}` : '-'}</TableCell>
 										<TableCell>{item.child_category?.child_name ?? 'N/A'}</TableCell>
+										<TableCell>
+											<span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+												item.status === 'Active' 
+													? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+													: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+											}`}>
+												{item.status}
+											</span>
+										</TableCell>
 										<TableCell>
 											{can('update products') && (
 												<Link href={`/products/${item.id}/edit`}>
@@ -141,7 +165,7 @@ export default function ProductsIndex({ products, childCategories = [], filters 
 								))}
 								{products.data.length === 0 && (
 									<TableRow>
-										<TableCell colSpan={6}>No Results Found!</TableCell>
+										<TableCell colSpan={7}>No Results Found!</TableCell>
 									</TableRow>
 								)}
 							</TableBody>

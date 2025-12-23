@@ -69,15 +69,10 @@ export default function InventoryCompletionTrackingIndex({
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
 
   const yearFilter = filters.fiscal_year_id ?? 'all';
-  const periodFilter = filters.inventory_period_id ?? 'all';
+  const periodFilter = filters.inventory_period_id ?? (inventoryPeriods.length > 0 ? String(inventoryPeriods[0].id) : 'all');
   const statusFilter = filters.status ?? 'all';
 
-  console.log('Inventory Completion Tracking Data:', {
-    inventoryPeriods,
-    fiscalYears,
-    completionData: initialCompletionData,
-    filters
-  });
+
 
   const setYearFilter = (value: string) => {
     router.get('/inventory-completion-tracking', {

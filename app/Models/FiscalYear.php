@@ -5,10 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 
 class FiscalYear extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saved(fn() => Cache::forget('fiscal_years_all'));
+        static::deleted(fn() => Cache::forget('fiscal_years_all'));
+    }
 
     protected $fillable = [
         'name', // e.g., 'EFY 2018'

@@ -24,6 +24,10 @@ class User extends Authenticatable {
 		'name',
 		'email',
 		'password',
+		'phone_number',
+		'country_code',
+		'is_paid_user',
+		'sms_notifications_enabled',
 	];
 
 	/**
@@ -69,6 +73,8 @@ class User extends Authenticatable {
 		return [
 			'email_verified_at' => 'datetime',
 			'password' => 'hashed',
+			'is_paid_user' => 'boolean',
+			'sms_notifications_enabled' => 'boolean',
 		];
 	}
 }

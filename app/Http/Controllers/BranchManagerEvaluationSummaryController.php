@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Models\Branch;
@@ -109,12 +110,27 @@ class BranchManagerEvaluationSummaryController extends Controller
 
     public function summary(Request $request)
     {
+        // Cache branches for 10 minutes
+        $branches = Cache::remember('branches_all_sorted', 600, fn() => 
+            Branch::select('id', 'name')->orderBy('name')->get()
+        );
+        
+        // Cache evaluation periods for 10 minutes
+        $periods = Cache::remember('evaluation_periods_all', 600, fn() => 
+            EvaluationPeriod::select('id', 'evaluation_period_name')->orderByDesc('id')->get()
+        );
+        
         $branchId = $request->query('branch_id');
         $periodId = $request->query('period_id');
+        
         if ($branchId === 'all' || $branchId === '') {
             $branchId = null;
         }
-        if ($periodId === 'all' || $periodId === '') {
+        
+        // Default to latest period if not specified
+        if ($periodId === null || $periodId === '') {
+            $periodId = $periods->first()?->id;
+        } elseif ($periodId === 'all') {
             $periodId = null;
         }
 
@@ -123,9 +139,12 @@ class BranchManagerEvaluationSummaryController extends Controller
         return Inertia::render('reports/branch-manager-evaluation-summary', [
             'rows' => $result,
             'departmentNames' => $departmentNames,
-            'branches' => Branch::select('id', 'name')->orderBy('name')->get(),
-            'periods' => EvaluationPeriod::select('id', 'evaluation_period_name')->orderByDesc('id')->get(),
-            'request' => $request->only('branch_id', 'period_id'),
+            'branches' => $branches,
+            'periods' => $periods,
+            'request' => [
+                'branch_id' => $request->query('branch_id'),
+                'period_id' => $periodId ? (string) $periodId : null,
+            ],
         ]);
     }
 

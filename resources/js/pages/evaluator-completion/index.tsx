@@ -95,7 +95,7 @@ export default function EvaluatorCompletionIndex({
   request?: { search?: string; period_id?: string; status?: string; evaluation_names?: string };
 }) {
   const [search, setSearch] = useState<string>(request?.search ?? '');
-  const [periodId, setPeriodId] = useState<string>(request?.period_id ?? 'all');
+  const [periodId, setPeriodId] = useState<string>(request?.period_id ?? (periods.length > 0 ? String(periods[0].id) : ''));
   const [status, setStatus] = useState<string>(request?.status ?? 'all');
   const [selectedEvaluationNames, setSelectedEvaluationNames] = useState<string[]>(
     request?.evaluation_names ? request.evaluation_names.split(',') : []
