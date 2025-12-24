@@ -13,4 +13,9 @@ class OrderType extends Model
         'name',
         'status',
     ];
+
+    public function preOrders()
+    {
+        return $this->hasMany(PreOrder::class);
+    }
 }

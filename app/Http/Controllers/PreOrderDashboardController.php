@@ -51,8 +51,45 @@ class PreOrderDashboardController extends Controller
         // Get dashboard data
         $dashboardData = $this->getDashboardData($query, $filters);
 
+        // Fetch filter options
+        // Fetch dynamic filter options based on active filters (excluding self)
+
+        // Branches: Filter by all except branch_id
+        $branchesQuery = Branch::whereHas('preOrders', function ($q) use ($filters) {
+            $this->applyFilters($q, array_diff_key($filters, ['branch_id' => '']));
+        })->orderBy('name')->get(['id', 'name']);
+
+        // Collection Days: Filter by all except collection_day_id
+        $collectionDaysQuery = CollectionDay::whereHas('preOrders', function ($q) use ($filters) {
+            $this->applyFilters($q, array_diff_key($filters, ['collection_day_id' => '']));
+        })->orderBy('name')->get(['id', 'name']);
+
+        // Order Types: Filter by all except order_type_id
+        $orderTypesQuery = OrderType::whereHas('preOrders', function ($q) use ($filters) {
+            $this->applyFilters($q, array_diff_key($filters, ['order_type_id' => '']));
+        })->orderBy('name')->get(['id', 'name']);
+
+        // Products: Filter by all except product_id
+        $productsQuery = PreOrderProduct::whereHas('preOrderItems.preOrder', function ($q) use ($filters) {
+            $this->applyFilters($q, array_diff_key($filters, ['product_id' => '']));
+        })->orderBy('product_name')->get(['id', 'product_name']);
+
+        // Statuses: Get statuses present in current filtered data (excluding status filter)
+        $statusQuery = PreOrder::query();
+        $this->applyFilters($statusQuery, array_diff_key($filters, ['status' => '']));
+        $statuses = $statusQuery->select('status')->distinct()->pluck('status');
+
+
         return Inertia::render('pre-orders/dashboard', [
             'dashboard' => $dashboardData,
+            'filters' => $filters,
+            'options' => [
+                'branches' => $branchesQuery,
+                'collectionDays' => $collectionDaysQuery,
+                'orderTypes' => $orderTypesQuery,
+                'products' => $productsQuery,
+                'statuses' => $statuses,
+            ],
         ]);
     }
 
@@ -62,18 +99,26 @@ class PreOrderDashboardController extends Controller
     private function getDashboardData($query, array $filters): array
     {
         // Summary Statistics
-        $summary = $this->getSummaryStats($query);
+        $summary = $this->getSummaryStats($query->clone());
 
-        // Status distribution
+        // Status distribution (keep for now if needed, or remove if fully replaced)
         $statusDistribution = $this->getStatusDistribution($query->clone());
 
         // Summary table data
-        $summaryData = $this->getSummaryTableData($query->clone());
+        $summaryData = $this->getSummaryTableData($query->clone(), $filters);
+
+        // Chart Data
+        $charts = [
+            'orderType' => $this->getOrdersByOrderType($query->clone()),
+            'product' => $this->getTopProducts($query->clone()),
+            'collectionDay' => $this->getOrdersByCollectionDay($query->clone()),
+        ];
 
         return [
             'summary' => $summary,
             'statusDistribution' => $statusDistribution,
             'summaryData' => $summaryData,
+            'charts' => $charts,
         ];
     }
 
@@ -83,15 +128,15 @@ class PreOrderDashboardController extends Controller
     private function applyFilters($query, array $filters): void
     {
         if (!empty($filters['date_from'])) {
-            $query->whereDate('created_at', '>=', $filters['date_from']);
+            $query->whereDate('pre_orders.created_at', '>=', $filters['date_from']);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('created_at', '<=', $filters['date_to']);
+            $query->whereDate('pre_orders.created_at', '<=', $filters['date_to']);
         }
 
         if (!empty($filters['branch_id'])) {
-            $query->where('collection_branch_id', $filters['branch_id']);
+            $query->where('pre_orders.collection_branch_id', $filters['branch_id']);
         }
 
         if (!empty($filters['product_id'])) {
@@ -101,15 +146,15 @@ class PreOrderDashboardController extends Controller
         }
 
         if (!empty($filters['collection_day_id'])) {
-            $query->where('collection_day_id', $filters['collection_day_id']);
+            $query->where('pre_orders.collection_day_id', $filters['collection_day_id']);
         }
 
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            $query->where('pre_orders.status', $filters['status']);
         }
 
         if (!empty($filters['order_type_id'])) {
-            $query->where('order_type_id', $filters['order_type_id']);
+            $query->where('pre_orders.order_type_id', $filters['order_type_id']);
         }
     }
 
@@ -120,13 +165,14 @@ class PreOrderDashboardController extends Controller
     {
         $stats = $query->selectRaw("
             COUNT(*) as total_orders,
-            COUNT(DISTINCT collection_branch_id) as unique_branches,
-            COUNT(DISTINCT client_name) as unique_customers,
-            SUM(total_amount) as total_revenue,
-            AVG(total_amount) as avg_order_value,
-            COUNT(CASE WHEN status = 'Paid' THEN 1 END) as paid_orders,
-            COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending_orders,
-            COUNT(CASE WHEN status = 'Collected' THEN 1 END) as collected_orders
+            COUNT(DISTINCT pre_orders.collection_branch_id) as unique_branches,
+            COUNT(DISTINCT pre_orders.client_name) as unique_customers,
+            SUM(pre_orders.total_amount) as total_revenue,
+            AVG(pre_orders.total_amount) as avg_order_value,
+            COUNT(CASE WHEN pre_orders.status = 'Paid' THEN 1 END) as paid_orders,
+            COUNT(CASE WHEN pre_orders.status = 'Pending' THEN 1 END) as pending_orders,
+            COUNT(CASE WHEN pre_orders.status = 'Collected' THEN 1 END) as collected_orders,
+            COUNT(CASE WHEN pre_orders.status = 'Cancelled' THEN 1 END) as cancelled_orders
         ")->first();
 
         return [
@@ -138,6 +184,7 @@ class PreOrderDashboardController extends Controller
             'paid_orders' => (int) $stats->paid_orders,
             'pending_orders' => (int) $stats->pending_orders,
             'collected_orders' => (int) $stats->collected_orders,
+            'cancelled_orders' => (int) $stats->cancelled_orders,
         ];
     }
 
@@ -155,17 +202,17 @@ class PreOrderDashboardController extends Controller
             COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending_orders,
             COUNT(CASE WHEN status = 'Collected' THEN 1 END) as collected_orders
         ")
-        ->groupBy('collection_branch_id')
-        ->orderByDesc('total_orders')
-        ->get()
-        ->keyBy('collection_branch_id'); // Key by branch_id for easy lookup
+            ->groupBy('collection_branch_id')
+            ->orderByDesc('total_orders')
+            ->get()
+            ->keyBy('collection_branch_id'); // Key by branch_id for easy lookup
 
         // Get all available branches
         $allBranches = Branch::orderBy('name')->get(['id', 'name']);
 
         $result = $allBranches->map(function ($branch) use ($ordersByBranch) {
             $branchOrders = $ordersByBranch->get($branch->id);
-            
+
             return [
                 'branch' => [
                     'id' => $branch->id,
@@ -252,24 +299,25 @@ class PreOrderDashboardController extends Controller
      */
     private function getOrdersByCollectionDay($query): array
     {
-        $orders = $query->selectRaw("
-            collection_day_id,
-            COUNT(*) as total_orders,
-            SUM(total_amount) as total_revenue,
-            AVG(total_amount) as avg_order_value,
-            COUNT(CASE WHEN status = 'Paid' THEN 1 END) as paid_orders,
-            COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending_orders
-        ")
-        ->with('collectionDay:id,name')
-        ->groupBy('collection_day_id')
-        ->orderBy('collection_day_id')
-        ->get();
+        $orders = $query->join('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id')
+            ->selectRaw("
+                pre_orders.collection_day_id,
+                collection_days.name as collection_day_name,
+                COUNT(*) as total_orders,
+                SUM(pre_orders.total_amount) as total_revenue,
+                AVG(pre_orders.total_amount) as avg_order_value,
+                COUNT(CASE WHEN pre_orders.status = 'Paid' THEN 1 END) as paid_orders,
+                COUNT(CASE WHEN pre_orders.status = 'Pending' THEN 1 END) as pending_orders
+            ")
+            ->groupBy('pre_orders.collection_day_id', 'collection_days.name', 'collection_days.display_order')
+            ->orderByDesc('collection_days.display_order')
+            ->get();
 
         return $orders->map(function ($day) {
             return [
                 'collection_day' => [
-                    'id' => $day->collectionDay->id,
-                    'name' => $day->collectionDay->name,
+                    'id' => $day->collection_day_id,
+                    'name' => $day->collection_day_name,
                 ],
                 'metrics' => [
                     'total_orders' => (int) $day->total_orders,
@@ -293,10 +341,10 @@ class PreOrderDashboardController extends Controller
             SUM(total_amount) as total_revenue,
             COUNT(CASE WHEN status = 'Paid' THEN 1 END) as paid_orders
         ")
-        ->groupBy('date')
-        ->orderBy('date')
-        ->limit(30) // Last 30 days
-        ->get();
+            ->groupBy('date')
+            ->orderBy('date')
+            ->limit(30) // Last 30 days
+            ->get();
 
         return $trends->map(function ($trend) {
             return [
@@ -350,9 +398,9 @@ class PreOrderDashboardController extends Controller
             COUNT(*) as count,
             SUM(total_amount) as total_amount
         ")
-        ->groupBy('status')
-        ->orderByDesc('count')
-        ->get();
+            ->groupBy('status')
+            ->orderByDesc('count')
+            ->get();
 
         return $distribution->map(function ($status) {
             return [
@@ -366,34 +414,64 @@ class PreOrderDashboardController extends Controller
     /**
      * Get summary table data with grouped by collection branch
      */
-    private function getSummaryTableData($query): array
+    private function getSummaryTableData($unusedQuery, array $filters): array
     {
-        // Get aggregated data with branch, collection day, and product names using JOIN
-        $branchData = DB::table('pre_orders')
-        ->selectRaw("
-            pre_orders.collection_branch_id,
-            branches.name as branch_name,
-            pre_orders.collection_day_id,
-            collection_days.name as collection_day_name,
-            pre_order_products.product_name as product_name,
-            SUM(pre_order_items.quantity) as total_quantity,
-            SUM(pre_order_items.subtotal) as total_amount,
-            COUNT(DISTINCT pre_orders.id) as total_orders
-        ")
-        ->join('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
-        ->join('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
-        ->join('branches', 'pre_orders.collection_branch_id', '=', 'branches.id')
-        ->leftJoin('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id')
-        ->whereNotNull('pre_orders.collection_branch_id')
-        ->groupBy('pre_orders.collection_branch_id', 'branches.name', 'pre_orders.collection_day_id', 'collection_days.name', 'pre_order_products.product_name')
-        ->orderBy('branches.name')
-        ->orderBy('collection_days.name')
-        ->orderBy('pre_order_products.product_name')
-        ->orderByDesc('total_amount')
-        ->get();
+        // Build query from scratch to ensure clean state and correct joins for summary table
+        $query = DB::table('pre_orders')
+            ->selectRaw("
+                pre_orders.collection_branch_id,
+                COALESCE(branches.name, 'Unassigned') as branch_name,
+                pre_orders.collection_day_id,
+                COALESCE(collection_days.name, 'Not Set') as collection_day_name,
+                COALESCE(pre_order_products.product_name, 'Unknown Product') as product_name,
+                SUM(pre_order_items.quantity) as total_quantity,
+                SUM(pre_order_items.subtotal) as total_amount,
+                COUNT(DISTINCT pre_orders.id) as total_orders
+            ")
+            ->leftJoin('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
+            ->leftJoin('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->leftJoin('branches', 'pre_orders.collection_branch_id', '=', 'branches.id')
+            ->leftJoin('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id');
+
+        // Apply filters directly to this query
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('pre_orders.created_at', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('pre_orders.created_at', '<=', $filters['date_to']);
+        }
+        if (!empty($filters['branch_id']) && $filters['branch_id'] !== 'all') {
+            $query->where('pre_orders.collection_branch_id', $filters['branch_id']);
+        }
+        if (!empty($filters['product_id']) && $filters['product_id'] !== 'all') {
+            // Filter by product_id on the joined item/product
+            $query->where('pre_order_products.id', $filters['product_id']);
+        }
+        if (!empty($filters['collection_day_id']) && $filters['collection_day_id'] !== 'all') {
+            $query->where('pre_orders.collection_day_id', $filters['collection_day_id']);
+        }
+        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+            $query->where('pre_orders.status', $filters['status']);
+        }
+        if (!empty($filters['order_type_id']) && $filters['order_type_id'] !== 'all') {
+            $query->where('pre_orders.order_type_id', $filters['order_type_id']);
+        }
+
+        $branchData = $query->groupBy(
+            'pre_orders.collection_branch_id',
+            'branches.name',
+            'pre_orders.collection_day_id',
+            'collection_days.name',
+            'pre_order_products.product_name'
+        )
+            ->orderBy('branches.name')
+            ->orderBy('collection_days.name')
+            ->orderBy('pre_order_products.product_name')
+            ->orderByDesc(DB::raw('SUM(pre_order_items.subtotal)'))
+            ->get();
 
         $summaryData = [];
-        
+
         foreach ($branchData as $branch) {
             $summaryData[] = [
                 'collectionBranch' => $branch->branch_name,
@@ -406,5 +484,25 @@ class PreOrderDashboardController extends Controller
         }
 
         return $summaryData;
+    }
+    /**
+     * Get orders by order type
+     */
+    private function getOrdersByOrderType($query): array
+    {
+        $orders = $query->selectRaw("
+            order_type_id,
+            COUNT(*) as count
+        ")
+            ->with('orderType:id,name')
+            ->groupBy('order_type_id')
+            ->get();
+
+        return $orders->map(function ($type) {
+            return [
+                'name' => $type->orderType->name ?? 'Unknown',
+                'value' => (int) $type->count,
+            ];
+        })->toArray();
     }
 }

@@ -87,12 +87,12 @@ class MyBranchOrdersController extends Controller
         // Sorting
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
-        
+
         $allowedSorts = ['id', 'order_number', 'client_name', 'status', 'total_amount', 'created_at', 'collected_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
-        
+
         if (!in_array($sortDirection, ['asc', 'desc'])) {
             $sortDirection = 'desc';
         }
@@ -306,12 +306,12 @@ class MyBranchOrdersController extends Controller
         // Sorting
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
-        
+
         $allowedSorts = ['id', 'order_number', 'client_name', 'status', 'total_amount', 'created_at', 'collected_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
-        
+
         if (!in_array($sortDirection, ['asc', 'desc'])) {
             $sortDirection = 'desc';
         }
@@ -343,8 +343,6 @@ class MyBranchOrdersController extends Controller
 
         return $pdf->download('branch-orders-' . now()->format('Y-m-d-His') . '.pdf');
     }
-<<<<<<< HEAD
-=======
 
     private function exportCsv($orders)
     {
@@ -356,28 +354,30 @@ class MyBranchOrdersController extends Controller
 
         return response()->stream(function () use ($orders) {
             $out = fopen('php://output', 'w');
-            if ($out === false) { return; }
-            
+            if ($out === false) {
+                return;
+            }
+
             // BOM for UTF-8 Excel compatibility
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
             // Header row
             fputcsv($out, [
-                'Order #', 
-                'Client Name', 
-                'Phone Number', 
-                'Order Type', 
-                'Collection Day', 
-                'Products', 
-                'Status', 
-                'Total Amount', 
+                'Order #',
+                'Client Name',
+                'Phone Number',
+                'Order Type',
+                'Collection Day',
+                'Products',
+                'Status',
+                'Total Amount',
                 'Collection Status',
                 'Date Created'
             ]);
-            
+
             // Data rows
             foreach ($orders as $order) {
-                $products = $order->items->map(function($item) {
+                $products = $order->items->map(function ($item) {
                     return ($item->product->product_name ?? 'Unknown') . " (" . $item->quantity . ")";
                 })->implode(', ');
 

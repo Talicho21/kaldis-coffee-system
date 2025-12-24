@@ -11,6 +11,7 @@ interface SummaryStats {
     paid_orders: number;
     pending_orders: number;
     collected_orders: number;
+    cancelled_orders: number;
 }
 
 interface SummaryCardsProps {
@@ -36,8 +37,8 @@ export default function SummaryCards({ stats }: SummaryCardsProps) {
             borderColor: 'border-green-200',
         },
         {
-            title: 'Paid Orders',
-            value: stats.paid_orders.toLocaleString(),
+            title: 'Paid / Cancelled',
+            value: `${stats.paid_orders.toLocaleString()} / ${stats.cancelled_orders.toLocaleString()}`,
             icon: Clock,
             color: 'text-emerald-600',
             bgColor: 'bg-emerald-50',
@@ -88,30 +89,6 @@ export default function SummaryCards({ stats }: SummaryCardsProps) {
                 })}
             </div>
 
-            {/* Status Distribution Card */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Order Status Distribution</CardTitle>
-                    <CardDescription>Breakdown of orders by status</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {statusCards.map((status, index) => (
-                            <div key={index} className="text-center p-4 rounded-lg bg-gray-50">
-                                <div className="text-3xl font-bold mb-2">
-                                    <Badge className={`${status.color} text-white px-3 py-2`}>
-                                        {status.value}
-                                    </Badge>
-                                </div>
-                                <div className="text-sm text-muted-foreground">{status.title}</div>
-                                <div className="text-lg font-semibold text-gray-600 mt-1">
-                                    {status.percentage}%
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
         </div>
     );
 }

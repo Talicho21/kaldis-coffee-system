@@ -1,4 +1,5 @@
 import '../css/app.css';
+import './echo';
 
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -43,7 +44,7 @@ if ('serviceWorker' in navigator) {
         immediate: true,
         onRegisteredSW(swUrl, registration) {
             console.log('Service Worker registered:', swUrl);
-            
+
             // Check for updates every hour
             if (registration) {
                 setInterval(() => {

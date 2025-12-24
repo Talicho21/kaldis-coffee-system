@@ -5,6 +5,7 @@ import { Head, Link } from '@inertiajs/react';
 // Components
 import SummaryCards from '@/components/dashboard/SummaryCards';
 import SummaryTable from '@/components/dashboard/SummaryTable';
+import DashboardCharts from '@/components/dashboard/DashboardCharts';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Pre-Orders Dashboard', href: '/pre-orders/dashboard' }];
 
@@ -12,6 +13,11 @@ type Props = {
 	dashboard: {
 		summary: any;
 		statusDistribution: Array<any>;
+		charts: {
+			orderType: Array<{ name: string; value: number }>;
+			product: Array<{ product_name: string; total_quantity: number; total_revenue: number }>;
+			collectionDay: Array<{ collection_day: { name: string }; metrics: { total_orders: number } }>;
+		};
 		summaryData: Array<{
 			collectionBranch: string;
 			collectionDay: string;
@@ -21,35 +27,49 @@ type Props = {
 			totalOrders: number;
 		}>;
 	};
+	filters: any;
+	options: any;
 };
 
-export default function DashboardPage({ dashboard }: Props) {
+import { router } from '@inertiajs/react';
+import { useEffect } from 'react';
+
+export default function DashboardPage({ dashboard, filters, options }: Props) {
+	useEffect(() => {
+		if (window.Echo) {
+			window.Echo.channel('pre-orders').listen('.pre-order.updated', (e: any) => {
+				console.log('Pre-order updated event received:', e);
+				router.reload({ only: ['dashboard'] });
+			});
+
+			return () => {
+				window.Echo.leaveChannel('pre-orders');
+			};
+		}
+	}, []);
+
 	return (
 		<AppLayout breadcrumbs={breadcrumbs}>
 			<Head title="Pre-Orders Dashboard" />
 
 			<div className="container mx-auto space-y-6 p-6">
 				{/* Page Header */}
-				<div className="flex items-center justify-between">
+				<div>
 					<div>
 						<h1 className="text-3xl font-bold">Pre-Orders Dashboard</h1>
 						<p className="text-muted-foreground">Essential metrics and overview for pre-orders</p>
 					</div>
-					<div className="flex gap-2">
-						<Link href="/pre-orders/create">
-							<button className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50">
-								<span className="mr-2">+</span>
-								New Pre-Order
-							</button>
-						</Link>
-					</div>
+
 				</div>
 
 				{/* Summary Cards */}
 				<SummaryCards stats={dashboard.summary} />
 
+				{/* Charts */}
+				<DashboardCharts data={dashboard.charts} />
+
 				{/* Summary Table */}
-				<SummaryTable data={dashboard.summaryData} />
+				<SummaryTable data={dashboard.summaryData} filters={filters} options={options} />
 			</div>
 		</AppLayout>
 	);

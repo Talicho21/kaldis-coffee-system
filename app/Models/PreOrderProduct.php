@@ -18,4 +18,9 @@ class PreOrderProduct extends Model
     protected $casts = [
         'unit_price' => 'decimal:2',
     ];
+
+    public function preOrderItems()
+    {
+        return $this->hasMany(PreOrderItem::class);
+    }
 }

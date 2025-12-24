@@ -37,4 +37,9 @@ class Branch extends Model
     {
         return $this->belongsToMany(Department::class);
     }
+
+    public function preOrders()
+    {
+        return $this->hasMany(PreOrder::class, 'collection_branch_id');
+    }
 }

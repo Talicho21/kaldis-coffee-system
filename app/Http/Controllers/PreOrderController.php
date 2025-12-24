@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\PreOrderUpdated;
 use App\Models\Branch;
 use App\Models\CollectionDay;
 use App\Models\OrderType;
@@ -223,6 +224,9 @@ class PreOrderController extends Controller
 
             DB::commit();
 
+            // Broadcast update
+            event(new PreOrderUpdated());
+
             return redirect()->route('pre-orders.index')
                 ->with('success', "Pre-order {$orderNumber} created successfully.");
         } catch (\Exception $e) {
@@ -403,6 +407,9 @@ class PreOrderController extends Controller
 
             DB::commit();
 
+            // Broadcast update
+            event(new PreOrderUpdated());
+
             // If status changed to "Paid", send SMS notification
             if ($statusChangedToPaid) {
                 // Check if SMS is active
@@ -567,7 +574,7 @@ class PreOrderController extends Controller
         $message .= "- Branch: {$preOrder->collectionBranch->name}\n\n";
 
         $message .= "Total Amount: {$preOrder->total_amount} ETB\n";
-        $message .= "Items Ordered: " . count($preOrder->items) . "\n\n";
+        $message .= "Items Ordered: " . $preOrder->items->count() . "\n\n";
 
         $message .= "Kindly complete your payment at your earliest convenience.\n";
         $message .= "Thank you for choosing KALDIS!";
@@ -601,6 +608,9 @@ class PreOrderController extends Controller
             'status' => $validated['status'],
             'updated_by' => auth()->id(),
         ]);
+
+        // Broadcast update
+        event(new PreOrderUpdated());
 
         // Generate Telegram message if status is changed to "Paid"
         $telegramMessage = null;

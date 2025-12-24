@@ -18,4 +18,9 @@ class CollectionDay extends Model
     protected $casts = [
         'display_order' => 'integer',
     ];
+
+    public function preOrders()
+    {
+        return $this->hasMany(PreOrder::class);
+    }
 }
