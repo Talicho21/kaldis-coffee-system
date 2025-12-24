@@ -66,13 +66,40 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
     // Permission checks - require explicit permissions
     const canViewAllOrders = userPermissions?.includes('view all pre-orders');
     const canViewOrderDetails = userPermissions?.includes('view pre-order details');
-    const canCreateOrders = userPermissions?.includes('create pre-orders');
-    const canUpdateOrders = userPermissions?.includes('update pre-orders');
+    const canCreateOrders = userPermissions?.includes('create all pre-orders') || 
+                           userPermissions?.includes('create walkin pre-orders') || 
+                           userPermissions?.includes('create regular pre-orders');
+    const canUpdateOrders = userPermissions?.includes('update all pre-orders') || 
+                           userPermissions?.includes('update walkin pre-orders') || 
+                           userPermissions?.includes('update regular pre-orders') || 
+                           userPermissions?.includes('update pre-orders'); // Legacy fallback
     const canEditOwnOrders = userPermissions?.includes('edit own pre-orders');
     const canEditOtherUsersOrders = userPermissions?.includes('edit other users pre-orders');
     const canDeleteOrders = userPermissions?.includes('delete pre-orders');
     const canSendBulkSms = userPermissions?.includes('send bulk sms reminders');
+    const canCopyTelegram = userPermissions?.includes('copy pre-order telegram message');
     const canViewAuditTrail = userPermissions?.includes('view pre-order audit trail');
+    
+    // Check if user can edit a specific order
+    const canEditOrder = (order: PreOrder) => {
+        const isOwn = order.created_by === currentUserId;
+        const isWalkin = order.order_type?.name === 'Walkin Customer';
+        
+        // Check for broad update permissions
+        const hasGlobalEdit = userPermissions?.includes('update all pre-orders') || 
+                            userPermissions?.includes('edit other users pre-orders') || 
+                            userPermissions?.includes('update pre-orders');
+        
+        if (hasGlobalEdit) return true;
+
+        // "Edit Own" allows editing their own orders regardless of type
+        if (isOwn && userPermissions?.includes('edit own pre-orders')) return true;
+
+        // Specific type update permissions
+        return isWalkin 
+            ? userPermissions?.includes('update walkin pre-orders')
+            : userPermissions?.includes('update regular pre-orders');
+    };
     
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || 'all');
@@ -562,14 +589,14 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                                         </Button>
                                                     </Link>
                                                 )}
-                                                {(canUpdateOrders || canEditOtherUsersOrders || (canEditOwnOrders && order.created_by === currentUserId)) && (
+                                                {canEditOrder(order) && (
                                                     <Link href={`/pre-orders/${order.id}/edit`}>
                                                         <Button variant="ghost" size="sm">
                                                             <PencilIcon className="size-4" />
                                                         </Button>
                                                     </Link>
                                                 )}
-                                                {order.status === 'Paid' && (
+                                                {order.status === 'Paid' && canCopyTelegram && (
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
