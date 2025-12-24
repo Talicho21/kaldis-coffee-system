@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CollectionDay;
+use App\Models\Holiday;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,10 +24,12 @@ class CollectionDayController extends Controller
         }
 
         $perPage = (int) $request->query('per_page', 15);
-        $collectionDays = $query->orderBy('display_order')->orderByDesc('id')->paginate($perPage)->withQueryString();
+        $collectionDays = $query->with('holiday')->orderBy('display_order')->orderByDesc('id')->paginate($perPage)->withQueryString();
+        $holidays = Holiday::orderByDesc('date')->get(['id', 'name']);
 
         return Inertia::render('settings/collection-days/Index', [
             'collectionDays' => $collectionDays,
+            'holidays' => $holidays,
             'filters' => [
                 'search' => $request->query('search'),
                 'status' => $request->query('status'),
@@ -46,6 +49,7 @@ class CollectionDayController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'display_order' => ['required', 'integer', 'min:0'],
             'status' => ['required', 'in:Active,Inactive'],
+            'holiday_id' => ['nullable', 'exists:holidays,id'],
         ]);
 
         CollectionDay::create($validated);
@@ -67,6 +71,7 @@ class CollectionDayController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'display_order' => ['required', 'integer', 'min:0'],
             'status' => ['required', 'in:Active,Inactive'],
+            'holiday_id' => ['nullable', 'exists:holidays,id'],
         ]);
 
         $collectionDay->update($validated);

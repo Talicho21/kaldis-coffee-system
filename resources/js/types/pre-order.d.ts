@@ -20,6 +20,11 @@ export interface CollectionDay {
     name: string;
     display_order: number;
     status: 'Active' | 'Inactive';
+    holiday_id?: number;
+    holiday?: {
+        id: number;
+        name: string;
+    };
     created_at: string;
     updated_at: string;
 }

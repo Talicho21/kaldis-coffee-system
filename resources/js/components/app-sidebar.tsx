@@ -87,6 +87,7 @@ const sections: NavSection[] = [
       { title: 'Fiscal Months', href: '/fiscal-months', icon: CalendarDays, permission: 'view fiscal months' },
       { title: 'Evaluation Periods', href: '/evaluation-periods', icon: CalendarCheck, permission: 'view evaluation periods' },
       { title: 'Inventory Periods', href: '/inventory-periods', icon: CalendarCheck, permission: 'view inventory periods' },
+      { title: 'Holidays', href: '/holidays', icon: Calendar, permission: 'view holidays' },
     ],
   },
   {

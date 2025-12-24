@@ -26,16 +26,17 @@ use App\Http\Controllers\{
     EvaluatorCompletionController,
     SyncController,
     SmsBalanceController,
-    PreOrderDashboardController
+    PreOrderDashboardController,
+    HolidayController
 };
 
-Route::get('/', fn () => Inertia::render('welcome'))->name('home');
+Route::get('/', fn() => Inertia::render('welcome'))->name('home');
 
 // Offline fallback page for PWA
-Route::get('/offline', fn () => Inertia::render('offline'))->name('offline');
+Route::get('/offline', fn() => Inertia::render('offline'))->name('offline');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('dashboard', fn () => Inertia::render('dashboard'))->name('dashboard');
+    Route::get('dashboard', fn() => Inertia::render('dashboard'))->name('dashboard');
 
     // Offline Sync API Endpoints
     Route::post('sync/inventory-counts', [SyncController::class, 'syncInventoryCount'])->name('sync.inventory-counts');
@@ -56,7 +57,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Users Export - Must be before resource route to avoid conflict
     Route::get('users/export', [UserController::class, 'export'])->name('users.export');
-    
+
     // Users
     Route::resource('users', UserController::class)->except(['show']);
 
@@ -65,12 +66,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Employees Export - Must be before resource route to avoid conflict
     Route::get('employees/export', [EmployeeController::class, 'export'])->name('employees.export');
-    
+
     // Branches, Positions, Employees
     Route::resources([
         'branches' => BranchController::class,
         'positions' => PositionController::class,
+        'departments' => DepartmentController::class,
         'employees' => EmployeeController::class,
+        'holidays' => HolidayController::class,
     ]);
 
     // Managers

@@ -13,14 +13,21 @@ class CollectionDay extends Model
         'name',
         'display_order',
         'status',
+        'holiday_id',
     ];
 
     protected $casts = [
         'display_order' => 'integer',
+        'holiday_id' => 'integer',
     ];
 
     public function preOrders()
     {
         return $this->hasMany(PreOrder::class);
+    }
+
+    public function holiday()
+    {
+        return $this->belongsTo(Holiday::class);
     }
 }

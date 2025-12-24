@@ -207,5 +207,10 @@ class PermissionSeeder extends Seeder
         // My Branch Orders
         Permission::firstOrCreate(['name' => 'view my branch orders']);
         Permission::firstOrCreate(['name' => 'collect branch orders']);
+        // Holidays
+        Permission::firstOrCreate(['name' => 'view holidays']);
+        Permission::firstOrCreate(['name' => 'create holidays']);
+        Permission::firstOrCreate(['name' => 'update holidays']);
+        Permission::firstOrCreate(['name' => 'delete holidays']);
     }
 }

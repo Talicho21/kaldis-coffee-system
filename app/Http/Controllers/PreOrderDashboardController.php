@@ -270,9 +270,7 @@ class PreOrderDashboardController extends Controller
                 SUM(pre_order_items.subtotal) as total_revenue,
                 AVG(pre_order_items.quantity) as avg_quantity_per_order
             ")
-            ->whereIn('pre_orders.id', function ($subquery) use ($query) {
-                $subquery->select('id')->from('pre_orders');
-            })
+            ->whereIn('pre_orders.id', $query->select('pre_orders.id'))
             ->groupBy('pre_order_products.id', 'pre_order_products.product_name')
             ->orderByDesc('total_revenue')
             ->limit(20) // Limit to top 20 products
@@ -370,9 +368,7 @@ class PreOrderDashboardController extends Controller
                 SUM(pre_order_items.subtotal) as total_revenue,
                 COUNT(DISTINCT pre_orders.id) as order_count
             ")
-            ->whereIn('pre_orders.id', function ($subquery) use ($query) {
-                $subquery->select('id')->from('pre_orders');
-            })
+            ->whereIn('pre_orders.id', $query->select('pre_orders.id'))
             ->groupBy('pre_order_products.id', 'pre_order_products.product_name')
             ->orderByDesc('total_quantity')
             ->limit(10)

@@ -188,7 +188,7 @@ export default function DashboardCharts({ data }: DashboardChartsProps) {
                                 animationBegin={0}
                                 animationDuration={800}
                             >
-                                <LabelList dataKey="orders" position="top" fill="#065F46" fontSize={12} fontWeight="bold" />
+                                <LabelList dataKey="orders" position="center" fill="#065F46" fontSize={12} fontWeight="bold" />
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
