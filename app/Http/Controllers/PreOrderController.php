@@ -122,7 +122,7 @@ class PreOrderController extends Controller
     public function create(): Response
     {
         $user = auth()->user();
-        
+
         $canCreateAll = $user->can('create all pre-orders');
         $canCreateWalkin = $user->can('create walkin pre-orders');
         $canCreateRegular = $user->can('create regular pre-orders');
@@ -153,7 +153,7 @@ class PreOrderController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $user = auth()->user();
-        
+
         $canCreateAll = $user->can('create all pre-orders');
         $canCreateWalkin = $user->can('create walkin pre-orders');
         $canCreateRegular = $user->can('create regular pre-orders');
@@ -258,10 +258,10 @@ class PreOrderController extends Controller
                 try {
                     // Reload relationships for SMS
                     $preOrder->load(['collectionDay', 'collectionBranch', 'items.product']);
-                    
+
                     $smsNotification = new PreOrderPaidGeezSMSNotification($preOrder);
                     $smsSent = $smsNotification->sendCustomerSMS();
-                    
+
                     if ($smsSent) {
                         Log::info('SMS sent to Walkin Customer via GeezSMS on creation', [
                             'pre_order_id' => $preOrder->id,
@@ -319,6 +319,8 @@ class PreOrderController extends Controller
         $canEditWalkin = $user->can('update walkin pre-orders');
         $canEditRegular = $user->can('update regular pre-orders');
         $canEditOwn = $user->can('edit own pre-orders');
+
+        $canEdit = false;
 
         if ($canEditAll) {
             $canEdit = true;
@@ -381,6 +383,7 @@ class PreOrderController extends Controller
         $canEditOwn = $user->can('edit own pre-orders');
 
         // Permission check for the initial order
+        $canEdit = false;
         if ($canEditAll) {
             $canEdit = true;
         } elseif ($isWalkinBefore) {
@@ -556,7 +559,7 @@ class PreOrderController extends Controller
                         $preOrder->load(['collectionDay', 'collectionBranch']);
                         $smsNotification = new PreOrderCancelledGeezSMSNotification($preOrder);
                         $smsSent = $smsNotification->sendCustomerSMS();
-                        
+
                         if ($smsSent) {
                             Log::info('Cancellation SMS sent on update', [
                                 'pre_order_id' => $preOrder->id,
@@ -696,7 +699,7 @@ class PreOrderController extends Controller
         $message .= "- Branch: {$preOrder->collectionBranch->name}\n\n";
 
         $message .= "Total Amount: {$preOrder->total_amount} ETB\n";
-        $message .= "Items Ordered: " . count($preOrder->items) . "\n\n";
+        $message .= "Items Ordered: " . $preOrder->items->count() . "\n\n";
 
         $message .= "Kindly complete your payment at your earliest convenience.\n";
         $message .= "Thank you for choosing KALDIS!";
@@ -757,7 +760,6 @@ class PreOrderController extends Controller
         $smsStatus = null;
 
         if ($validated['status'] === 'Paid') {
-<<<<<<< HEAD
             // Reload relationships for message generation
             $preOrder->load(['collectionDay', 'collectionBranch', 'items.product']);
             $telegramMessage = $this->generateTelegramMessage($preOrder);
@@ -781,8 +783,10 @@ class PreOrderController extends Controller
                         'order_number' => $preOrder->order_number,
                         'phone' => $preOrder->phone_number
                     ]);
-=======
-            // ... (Paid SMS logic remains same) ...
+                }
+            } catch (\Exception $e) {
+                Log::error('SMS notification error', ['error' => $e->getMessage()]);
+            }
         } elseif ($validated['status'] === 'Cancelled') {
             // Send cancellation SMS
             if (SmsSettings::isActive()) {
@@ -790,7 +794,7 @@ class PreOrderController extends Controller
                     $preOrder->load(['collectionDay', 'collectionBranch']);
                     $smsNotification = new PreOrderCancelledGeezSMSNotification($preOrder);
                     $smsSent = $smsNotification->sendCustomerSMS();
-                    
+
                     if ($smsSent) {
                         $smsStatus = 'Cancellation SMS notification sent to customer.';
                         Log::info('Cancellation SMS sent via updateStatus', ['pre_order_id' => $preOrder->id]);
@@ -799,7 +803,6 @@ class PreOrderController extends Controller
                     }
                 } catch (\Exception $e) {
                     $smsStatus = 'Cancellation SMS error: ' . $e->getMessage();
->>>>>>> 23bea7ab10a80f0070f94ed7be963ea030be1506
                 }
             }
         }
