@@ -928,29 +928,23 @@ class PreOrderController extends Controller
 
     private function generateTelegramMessage(PreOrder $preOrder): string
     {
-        $message = "📦 *ORDER CONFIRMATION - PAID*\n\n";
-        $message .= "*Order Details:*\n";
-        $message .= "Order #: *{$preOrder->order_number}*\n";
-        $message .= "Client: {$preOrder->client_name}\n";
-        $message .= "Phone: {$preOrder->phone_number}\n";
-        $message .= "Status: ✅ PAID\n\n";
+        $products = $preOrder->items->map(function($item) {
+             return ($item->product->product_name ?? 'Unknown') . " (" . $item->quantity . ")";
+        })->implode(', ');
 
-        $message .= "*Collection Information:*\n";
-        $message .= "Day: {$preOrder->collectionDay->name}\n";
-        $message .= "Collection Branch: {$preOrder->collectionBranch->name}\n\n";
+        $orderTypeName = $preOrder->orderType?->name ?? 'Unknown';
+        $discountType = (str_contains(strtolower($orderTypeName), 'walkin')) ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
 
-        if ($preOrder->registering_branch) {
-            $message .= "Registering Branch: {$preOrder->registering_branch->name}\n";
-        }
-
-        $message .= "*Order Items:*\n";
-        foreach ($preOrder->items as $item) {
-            $message .= "• {$productName} ({$item->quantity}x) - ETB {$item->subtotal}\n";
-        }
-
-        $message .= "\n*Total Amount: {$preOrder->total_amount} ETB*\n";
-        $message .= "_Thank you for your order! Please keep this message for your records._\n";
-        $message .= "\n---";
+        $message = "ውድ ደምበኛችን {$preOrder->client_name}\n\n";
+        $message .= "እንኳን ለብርሃነ ልደቱ በሰላም አደረስዎ!\n\n";
+        $message .= "ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n";
+        $message .= "የተጠቀሙት የቅናሽ አይነት፡ {$discountType}\n\n";
+        $message .= "ያዘዙት ቶርታ፡ {$products}\n\n";
+        $message .= "ጠቅላላ ዋጋ፡ " . number_format($preOrder->total_amount, 0) . " ETB\n\n";
+        $message .= "ቶርታውን የሚወስዱበት ቅርንጫፍ፡ {$preOrder->collectionBranch->name}\n\n";
+        $message .= "ቶርታውን የሚወስዱበት ቀን፡ {$preOrder->collectionDay->name}\n\n";
+        $message .= "ካልዲስን ስለመረጡ እናመሰግናለን።\n\n";
+        $message .= "መልካም ገና";
 
         return $message;
     }
