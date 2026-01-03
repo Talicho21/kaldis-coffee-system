@@ -82,34 +82,23 @@ export default function Show({ preOrder, userPermissions }: Props) {
 	}, [flash.success, errors.status, flash.telegram_message, preOrder.status, preOrder]);
 
 	const generateTelegramMessageForView = (preOrder: PreOrder): string => {
-		let message = '📦 *ORDER CONFIRMATION - PAID*\n\n';
-		message += '*Order Details:*\n';
-		message += `Order #: *${preOrder.order_number}*\n`;
-		message += `Client: ${preOrder.client_name}\n`;
-		message += `Phone: ${preOrder.phone_number}\n`;
-		message += 'Status: ✅ PAID\n\n';
+		const products = preOrder.items?.map((item: any) => {
+			return `${item.product?.product_name || 'Unknown'} (${item.quantity})`;
+		}).join(', ') || 'None';
 
-		message += '*Collection Information:*\n';
-		message += `Day: ${preOrder.collection_day?.name || 'N/A'}\n`;
-		message += `Collection Branch: ${preOrder.collection_branch?.name || 'N/A'}\n`;
+		const isWalkin = preOrder.order_type?.name === 'Walkin Customer';
+		const discountType = isWalkin ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
 
-		if (preOrder.registering_branch) {
-			message += `Registering Branch: ${preOrder.registering_branch.name}\n`;
-		}
-
-		message += '*Order Items:*\n';
-		if (preOrder.items && preOrder.items.length > 0) {
-			preOrder.items.forEach((item) => {
-				const productName = item.product ? item.product.product_name : 'Product';
-				message += `• ${productName} (${item.quantity}x) - ETB ${item.subtotal}\n`;
-			});
-		}
-
-		message += `\n*Total Amount: ETB ${preOrder.total_amount}*\n`;
-		message += '\n*Payment Status: PAID*\n';
-		message += '_Thank you for your order! Please keep this message for your records._\n';
-		message += '\n---';
-		message += '\nGenerated on: ' + new Date().toLocaleString();
+		let message = `ውድ ደምበኛችን ${preOrder.client_name}\n\n`;
+		message += 'እንኳን ለብርሃነ ልደቱ በሰላም አደረስዎ!\n\n';
+		message += 'ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n';
+		message += `የተጠቀሙት የቅናሽ አይነት፡ ${discountType}\n\n`;
+		message += `ያዘዙት ቶርታ፡ ${products}\n\n`;
+		message += `ጠቅላላ ዋጋ፡ ETB ${Number(preOrder.total_amount).toLocaleString()}\n\n`;
+		message += `ቶርታውን የሚወስዱበት ቅርንጫፍ፡ ${preOrder.collection_branch?.name || 'N/A'}\n\n`;
+		message += `ቶርታውን የሚወስዱበት ቀን፡ ${preOrder.collection_day?.name || 'N/A'}\n\n`;
+		message += 'ካልዲስን ስለመረጡ እናመሰግናለን።\n\n';
+		message += 'መልካም ገና';
 
 		return message;
 	};
