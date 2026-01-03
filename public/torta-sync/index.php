@@ -7,7 +7,7 @@ try {
 
     // Fetch source orders
     $orders = $srcDB->query("
-        SELECT o.*, c.first_name, c.last_name, b.name as branch_name 
+        SELECT o.*, c.first_name, c.last_name, b.name as branch_name, b.branch_code 
         FROM orders o
         JOIN customers c ON o.customer_id = c.id
         JOIN branches b ON o.branch_id = b.id
@@ -185,7 +185,7 @@ try {
                                     </div>
                                 </td>
                                 <td class="py-5 px-6 font-bold text-slate-500 text-xs tracking-tight"><?php echo htmlspecialchars($order['phone']); ?></td>
-                                <td class="py-5 px-1 text-center font-bold text-slate-500 text-[10px] uppercase"><?php echo htmlspecialchars(explode(' ', $order['branch_name'])[0]); ?></td>
+                                <td class="py-5 px-1 text-center font-bold text-slate-500 text-[10px] uppercase"><?php echo htmlspecialchars($order['branch_code'] ?: explode(' ', $order['branch_name'])[0]); ?></td>
                                 <td class="py-5 px-1 text-center">
                                     <span class="inline-block px-2 py-1 rounded-lg font-black uppercase text-[10px] tracking-tighter <?php echo $isSynced ? 'bg-slate-100 text-slate-400' : $statusClass; ?>">
                                         <?php echo $displayStatus; ?>

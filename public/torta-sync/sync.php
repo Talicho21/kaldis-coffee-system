@@ -8,7 +8,7 @@ try {
     $destDB = getDB(DEST_DB_HOST, DEST_DB_NAME, DEST_DB_USER, DEST_DB_PASS);
 
     // 1. Fetch reference data from destination
-    $destBranches = $destDB->query("SELECT id, name FROM branches")->fetchAll();
+    $destBranches = $destDB->query("SELECT id, branch_code FROM branches WHERE branch_code IS NOT NULL")->fetchAll();
     $destProducts = $destDB->query("SELECT id, product_name as name, unit_price FROM pre_order_products")->fetchAll();
     $destOrderTypes = $destDB->query("SELECT id, name FROM order_types")->fetchAll();
     $destDays = $destDB->query("SELECT id, name FROM collection_days")->fetchAll();
@@ -28,7 +28,7 @@ try {
 
     // 4. Fetch all orders from source
     $srcOrders = $srcDB->query("
-        SELECT o.*, c.first_name, c.last_name, b.name as branch_name 
+        SELECT o.*, c.first_name, c.last_name, b.branch_code 
         FROM orders o
         JOIN customers c ON o.customer_id = c.id
         JOIN branches b ON o.branch_id = b.id
@@ -73,12 +73,14 @@ try {
             ];
             $destStatus = $statusMap[$order['status']] ?? 'Pending';
 
-            // Map Branch
+            // Map Branch by branch_code
             $destBranchId = null;
-            foreach ($destBranches as $b) {
-                if (strcasecmp($b['name'], $order['branch_name']) === 0) {
-                    $destBranchId = $b['id'];
-                    break;
+            if (!empty($order['branch_code'])) {
+                foreach ($destBranches as $b) {
+                    if ($b['branch_code'] === $order['branch_code']) {
+                        $destBranchId = $b['id'];
+                        break;
+                    }
                 }
             }
             if (!$destBranchId) $destBranchId = 1; // Fallback to first branch
