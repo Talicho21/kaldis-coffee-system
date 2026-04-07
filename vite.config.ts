@@ -93,7 +93,7 @@ export default defineConfig({
                 navigateFallbackDenylist: [/^\/api/, /^\/sanctum/],
             },
             devOptions: {
-                enabled: true,
+                enabled: false,
             },
         }),
     ],

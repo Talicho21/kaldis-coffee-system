@@ -218,12 +218,11 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 					<div className="flex flex-wrap items-center gap-4">
 						<Input
 							type="text"
-							placeholder="Search by order #, client name, or phone..."
+							placeholder="Search by order #, name, or phone..."
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 							onKeyDown={(e) => e.key === 'Enter' && handleFilter()}
 							className="max-w-md"
-							icon={<SearchIcon className="size-4" />}
 						/>
 
 						<Select value={collectionDayId} onValueChange={setCollectionDayId}>
@@ -321,10 +320,16 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 											<SortIcon field="order_number" />
 										</div>
 									</TableHead>
-									<TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('client_name')}>
+									<TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('first_name')}>
 										<div className="flex items-center">
-											Client Name
-											<SortIcon field="client_name" />
+											First Name
+											<SortIcon field="first_name" />
+										</div>
+									</TableHead>
+									<TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('last_name')}>
+										<div className="flex items-center">
+											Second Name
+											<SortIcon field="last_name" />
 										</div>
 									</TableHead>
 									<TableHead>Phone</TableHead>
@@ -353,7 +358,8 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 										return (
 											<TableRow key={order.id} className={isCollected ? 'opacity-60' : ''}>
 												<TableCell className={isCollected ? 'line-through' : ''}>{order.order_number}</TableCell>
-												<TableCell className={isCollected ? 'line-through' : ''}>{order.client_name}</TableCell>
+												<TableCell className={isCollected ? 'line-through' : ''}>{order.first_name}</TableCell>
+												<TableCell className={isCollected ? 'line-through' : ''}>{order.last_name}</TableCell>
 												<TableCell className={isCollected ? 'line-through' : ''}>{order.phone_number}</TableCell>
 
 												<TableCell className={isCollected ? 'line-through' : ''}>

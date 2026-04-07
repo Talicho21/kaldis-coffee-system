@@ -105,4 +105,12 @@ class User extends Authenticatable
             ->pluck('employees.department_id')
             ->toArray();
     }
+
+    /**
+     * Pre-orders created by this user.
+     */
+    public function preOrders(): HasMany
+    {
+        return $this->hasMany(PreOrder::class, 'created_by');
+    }
 }

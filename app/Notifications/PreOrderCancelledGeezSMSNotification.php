@@ -52,9 +52,15 @@ class PreOrderCancelledGeezSMSNotification extends Notification
         $orderTypeName = $this->preOrder->orderType?->name ?? 'Unknown';
         $orderMethod = (str_contains(strtolower($orderTypeName), 'walkin')) ? 'ከቅርንጫፍ ያዘዙት' : 'በስልክ ደውለው ያዘዙት';
 
-        $message = "ውድ ደንበኛችን\n\n";
-        $message .= "በቅርቡ ከካልዲስ ኮፊ {$orderMethod} ቅድመ ትዕዛዝ፡ ክፍያውን ባለማጠናቀቅዎ ተሰርዟል";
-        
-        return $message;
+        $template = \App\Models\SmsTemplate::where('name', 'Order Cancelled')->first();
+        if (!$template) {
+            return "ውድ ደንበኛችን\n\nበቅርቡ ከካልዲስ ኮፊ {$orderMethod} ቅድመ ትዕዛዝ፡ ክፍያውን ባለማጠናቀቅዎ ተሰርዟል";
+        }
+
+        $replacements = [
+            '{order_method}' => $orderMethod,
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $template->content);
     }
 }

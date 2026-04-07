@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\CollectionDay;
+use App\Models\Holiday;
 use App\Models\OrderType;
 use App\Models\PreOrder;
 use App\Models\PreOrderItem;
@@ -17,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -44,37 +46,65 @@ class PreOrderController extends Controller
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhere('client_name', 'like', "%{$search}%")
-                    ->orWhere('phone_number', 'like', "%{$search}%");
+                    ->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('phone_number', 'like', "%{$search}%")
+                    ->orWhere('voucher_code', 'like', "%{$search}%")
+                    ->orWhere('transaction_reference', 'like', "%{$search}%")
+                    ->orWhere('payment_method', 'like', "%{$search}%")
+                    ->orWhereHas('collectionBranch', function ($bq) use ($search) {
+                        $bq->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('items.product', function ($pq) use ($search) {
+                        $pq->where('product_name', 'like', "%{$search}%");
+                    });
             });
         }
 
         if ($status = $request->query('status')) {
-            $query->where('status', $status);
+            $query->whereIn('status', (array) $status);
         }
 
         if ($branchId = $request->query('branch_id')) {
-            $query->where('collection_branch_id', $branchId);
+            $query->whereIn('collection_branch_id', (array) $branchId);
         }
 
         if ($collectionDayId = $request->query('collection_day_id')) {
-            $query->where('collection_day_id', $collectionDayId);
+            $query->whereIn('collection_day_id', (array) $collectionDayId);
         }
 
+        if ($holidayId = $request->query('holiday_id')) {
+            $query->whereIn('holiday_id', (array) $holidayId);
+        }
+
+
         if ($orderTypeId = $request->query('order_type_id')) {
-            $query->where('order_type_id', $orderTypeId);
+            $query->whereIn('order_type_id', (array) $orderTypeId);
+        }
+
+        if ($createdBy = $request->query('created_by')) {
+            $user = auth()->user();
+            $isHeadOffice = $user->employee && $user->employee->branch && $user->employee->branch->name === 'Head Office';
+            if ($user->can('view all pre-orders') && $isHeadOffice) {
+                $query->whereIn('created_by', (array) $createdBy);
+            }
         }
 
         if ($request->has('late_payment') && $request->query('late_payment') !== 'all') {
             $query->where('late_payment', $request->boolean('late_payment'));
         }
 
+        $paidProductsCount = (clone $query)
+            ->whereIn('status', ['Paid', 'Collected'])
+            ->join('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
+            ->sum('pre_order_items.quantity');
+
         // Sorting
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
 
         // Validate sort fields
-        $allowedSorts = ['id', 'order_number', 'client_name', 'phone_number', 'status', 'total_amount', 'created_at'];
+        $allowedSorts = ['id', 'order_number', 'first_name', 'last_name', 'phone_number', 'status', 'total_amount', 'created_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
@@ -88,9 +118,20 @@ class PreOrderController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $branches = Branch::all(['id', 'name']);
+        $branches = Branch::orderBy('name', 'asc')->get(['id', 'name']);
         $collectionDays = CollectionDay::where('status', 'Active')->orderBy('display_order')->get(['id', 'name']);
+        $holidays = Holiday::query()->orderBy('date')->get(['id', 'name']);
         $orderTypes = OrderType::where('status', 'Active')->get(['id', 'name']);
+        
+        $operators = [];
+        $user = auth()->user();
+        $isHeadOffice = $user->employee && $user->employee->branch && $user->employee->branch->name === 'Head Office';
+        
+        if ($user->can('view all pre-orders') && $isHeadOffice) {
+            $operators = \App\Models\User::whereHas('preOrders')
+                ->orderBy('name', 'asc')
+                ->get(['id', 'name']);
+        }
 
         // Get SMS balance data for users with permission
         $smsBalance = null;
@@ -107,18 +148,34 @@ class PreOrderController extends Controller
             }
         }
 
+        $myStatsQuery = (clone $query)->where('pre_orders.created_by', auth()->id());
+        $operatorStats = [
+            'total' => (clone $myStatsQuery)->count(),
+            'paid' => (clone $myStatsQuery)->whereIn('status', ['Paid', 'Collected'])->count(),
+            'pending' => (clone $myStatsQuery)->where('status', 'Pending')->count(),
+        ];
+
         return Inertia::render('pre-orders/index', [
             'preOrders' => $preOrders,
             'branches' => $branches,
             'collectionDays' => $collectionDays,
+            'holidays' => $holidays,
             'orderTypes' => $orderTypes,
+            'operators' => $operators,
+            'paidProductsCount' => (int) $paidProductsCount,
+            'operatorStats' => $operatorStats,
             'filters' => [
                 'search' => $request->query('search'),
                 'status' => $request->query('status'),
                 'branch_id' => $request->query('branch_id'),
                 'collection_day_id' => $request->query('collection_day_id'),
+                'holiday_id' => $request->query('holiday_id'),
                 'order_type_id' => $request->query('order_type_id'),
+                'created_by' => $request->query('created_by'),
+                'late_payment' => $request->query('late_payment'),
                 'per_page' => $request->query('per_page'),
+                'sort' => $request->query('sort'),
+                'direction' => $request->query('direction'),
             ],
             'smsBalance' => $smsBalance,
             'smsLastUpdated' => $smsLastUpdated,
@@ -139,7 +196,7 @@ class PreOrderController extends Controller
             abort(403, 'You do not have permission to create pre-orders.');
         }
 
-        $branches = Branch::all(['id', 'name']);
+        $branches = Branch::orderBy('name', 'asc')->get(['id', 'name']);
         $collectionDays = CollectionDay::where('status', 'Active')->orderBy('display_order')->get(['id', 'name']);
         $orderTypes = OrderType::where('status', 'Active')->get(['id', 'name']);
         $products = PreOrderProduct::where('status', 'Active')->orderBy('product_name')->get(['id', 'product_name', 'unit_price', 'walkin_price']);
@@ -191,7 +248,8 @@ class PreOrderController extends Controller
         $validated['phone_number'] = '+251' . $cleanedPhone;
 
         // Check for duplicate order (same client, phone, and collection day within last 24 hours)
-        $existingOrder = PreOrder::where('client_name', $validated['client_name'])
+        $existingOrder = PreOrder::where('first_name', $validated['first_name'])
+            ->where('last_name', $validated['last_name'])
             ->where('phone_number', $validated['phone_number'])
             ->where('collection_day_id', $validated['collection_day_id'])
             ->where('created_at', '>=', now()->subDay())
@@ -236,11 +294,14 @@ class PreOrderController extends Controller
             // Create pre-order
             $preOrder = PreOrder::create([
                 'order_number' => $orderNumber,
-                'client_name' => $validated['client_name'],
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'],
                 'phone_number' => $validated['phone_number'],
                 'order_type_id' => $validated['order_type_id'],
                 'collection_day_id' => $validated['collection_day_id'],
+                'holiday_id' => CollectionDay::find($validated['collection_day_id'])->holiday_id,
                 'collection_branch_id' => $validated['collection_branch_id'],
+
                 'voucher_code' => $validated['voucher_code'] ?? null,
                 'transaction_reference' => $validated['transaction_reference'] ?? null,
                 'status' => $status,
@@ -363,7 +424,7 @@ class PreOrderController extends Controller
 
         $preOrder->load('items');
 
-        $branches = Branch::all(['id', 'name']);
+        $branches = Branch::orderBy('name', 'asc')->get(['id', 'name']);
         $collectionDays = CollectionDay::where('status', 'Active')->orderBy('display_order')->get(['id', 'name']);
         $orderTypes = OrderType::where('status', 'Active')->get(['id', 'name']);
         $products = PreOrderProduct::where('status', 'Active')->orderBy('product_name')->get(['id', 'product_name', 'unit_price', 'walkin_price']);
@@ -438,7 +499,7 @@ class PreOrderController extends Controller
             'items.*.product_id' => ['required', 'integer', 'exists:pre_order_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'late_payment' => ['nullable', 'boolean'],
-            'payment_method' => ['required', 'string', 'in:Tele Birr,CBE'],
+            'payment_method' => ['nullable', 'string', 'in:Tele Birr,CBE', Rule::requiredIf(fn() => in_array($request->input('status'), ['Paid', 'Collected']))],
         ]);
 
         // Prepend +251 to phone number (remove any non-digits first)
@@ -517,11 +578,14 @@ class PreOrderController extends Controller
 
             // Prepare update data
             $updateData = [
-                'client_name' => $validated['client_name'],
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'],
                 'phone_number' => $validated['phone_number'],
                 'order_type_id' => $validated['order_type_id'],
                 'collection_day_id' => $validated['collection_day_id'],
+                'holiday_id' => CollectionDay::find($validated['collection_day_id'])->holiday_id,
                 'collection_branch_id' => $validated['collection_branch_id'],
+
                 'total_amount' => $totalAmount,
                 'transaction_reference' => $validated['transaction_reference'] ?? null,
                 'status' => $validated['status'],
@@ -691,7 +755,7 @@ class PreOrderController extends Controller
 
                 if ($smsSent) {
                     $successCount++;
-                    $results[] = "✅ SMS sent to {$order->client_name} (Order: {$order->order_number})";
+                    $results[] = "✅ SMS sent to {$order->first_name} {$order->last_name} (Order: {$order->order_number})";
                     Log::info('SMS reminder sent successfully', [
                         'pre_order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -699,7 +763,7 @@ class PreOrderController extends Controller
                     ]);
                 } else {
                     $failureCount++;
-                    $results[] = "❌ Failed to send SMS to {$order->client_name} (Order: {$order->order_number})";
+                    $results[] = "❌ Failed to send SMS to {$order->first_name} {$order->last_name} (Order: {$order->order_number})";
                     Log::warning('SMS reminder failed', [
                         'pre_order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -708,7 +772,7 @@ class PreOrderController extends Controller
                 }
             } catch (\Exception $e) {
                 $failureCount++;
-                $results[] = "❌ Error sending SMS to {$order->client_name}: " . $e->getMessage();
+                $results[] = "❌ Error sending SMS to {$order->first_name} {$order->last_name}: " . $e->getMessage();
                 Log::error('SMS reminder exception', [
                     'pre_order_id' => $order->id,
                     'order_number' => $order->order_number,
@@ -807,13 +871,17 @@ class PreOrderController extends Controller
     /**
      * Generate SMS reminder message for pending orders
      */
-    private function generateReminderMessage(PreOrder $preOrder): string
+    private function generateReminderMessage($preOrder): string
     {
-        $message = "ውድ ደንበኛችን\n\n";
-        $message .= "በቅርቡ ከካልዲስ ኮፊ በስልክ ደውለው ላዘዙት ቅድመ ትዕዛዝ ክፍያውን እስከ ምሽቱ 11:00 ድረስ ካላጠናቀቁ ትዕዛዙ ስለሚሰረዝ በቀረዎት ግዜ እባክዎን ክፍያውን ይጨርሱ።\n\n";
-        $message .= "እናመሰግናለን";
+        $template = \App\Models\SmsTemplate::where('name', 'Payment Reminder')->first();
+        if (!$template) {
+            $message = "ውድ ደንበኛችን\n\n";
+            $message .= "በቅርቡ ከካልዲስ ኮፊ በስልክ ደውለው ላዘዙት ቅድመ ትዕዛዝ ክፍያውን እስከ ምሽቱ 11:00 ድረስ ካላጠናቀቁ ትዕዛዙ ስለሚሰረዝ በቀረዎት ግዜ እባክዎን ክፍያውን ይጨርሱ።\n\n";
+            $message .= "እናመሰግናለን";
+            return $message;
+        }
 
-        return $message;
+        return $template->content;
     }
 
     public function updateStatus(Request $request, PreOrder $preOrder): RedirectResponse
@@ -935,23 +1003,43 @@ class PreOrderController extends Controller
         $orderTypeName = $preOrder->orderType?->name ?? 'Unknown';
         $discountType = (str_contains(strtolower($orderTypeName), 'walkin')) ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
 
-        $message = "ውድ ደምበኛችን {$preOrder->client_name}\n\n";
-        $message .= "እንኳን ለዒድ አልፊጥር በሰላም አደረስዎ!\n\n";
-        $message .= "ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n";
-        $message .= "የተጠቀሙት የቅናሽ አይነት፡ {$discountType}\n\n";
-        $message .= "ያዘዙት ቶርታ፡ {$products}\n\n";
-        $message .= "ጠቅላላ ዋጋ፡ " . number_format($preOrder->total_amount, 0) . " ETB\n\n";
-        $message .= "ቶርታውን የሚወስዱበት ቅርንጫፍ፡ {$preOrder->collectionBranch->name}\n";
-        if (!empty($preOrder->collectionBranch?->location)) {
-            $message .= "አድራሻ  ፡ {$preOrder->collectionBranch->location}\n\n";
-        } else {
-            $message .= "\n";
+        $template = \App\Models\SmsTemplate::where('name', 'Telegram Message')->first();
+        if (!$template) {
+            $message = "ውድ ደምበኛችን {$preOrder->first_name} {$preOrder->last_name}\n\n";
+            $message .= "እንኳን ለዒድ አልፊጥር በሰላም አደረስዎ!\n\n";
+            $message .= "ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n";
+            $message .= "የተጠቀሙት የቅናሽ አይነት፡ {$discountType}\n\n";
+            $message .= "ያዘዙት ቶርታ፡ {$products}\n\n";
+            $message .= "ጠቅላላ ዋጋ፡ " . number_format($preOrder->total_amount, 0) . " ETB\n\n";
+            $message .= "ቶርታውን የሚወስዱበት ቅርንጫፍ፡ " . ($preOrder->collectionBranch->name ?? '') . "\n";
+            if (!empty($preOrder->collectionBranch?->location)) {
+                $message .= "አድራሻ  ፡ {$preOrder->collectionBranch->location}\n\n";
+            } else {
+                $message .= "\n";
+            }
+            $message .= "ቶርታውን የሚወስዱበት ቀን፡ " . ($preOrder->collectionDay->name ?? '') . "\n\n";
+            $message .= "ካልዲስን ስለመረጡ እናመሰግናለን።\n\n";
+            $message .= "መልካም ዒድ";
+            return $message;
         }
-        $message .= "ቶርታውን የሚወስዱበት ቀን፡ {$preOrder->collectionDay->name}\n\n";
-        $message .= "ካልዲስን ስለመረጡ እናመሰግናለን።\n\n";
-        $message .= "መልካም ዒድ";
 
-        return $message;
+        $branchLocation = !empty($preOrder->collectionBranch?->location) 
+            ? "አድራሻ  ፡ {$preOrder->collectionBranch->location}\n\n" 
+            : "\n";
+
+        $replacements = [
+            '{first_name}' => $preOrder->first_name,
+            '{last_name}' => $preOrder->last_name,
+            '{client_name}' => trim($preOrder->first_name . ' ' . $preOrder->last_name),
+            '{discount_type}' => $discountType,
+            '{products}' => $products,
+            '{total_amount}' => number_format($preOrder->total_amount, 0),
+            '{collection_branch}' => $preOrder->collectionBranch->name ?? '',
+            '{branch_location}' => $branchLocation,
+            '{collection_day}' => $preOrder->collectionDay->name ?? '',
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $template->content);
     }
 
     /**
@@ -980,7 +1068,8 @@ class PreOrderController extends Controller
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhere('client_name', 'like', "%{$search}%")
+                    ->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
                     ->orWhere('phone_number', 'like', "%{$search}%");
             });
         }
@@ -997,6 +1086,12 @@ class PreOrderController extends Controller
             $query->where('collection_day_id', $collectionDayId);
         }
 
+        if ($holidayId = $request->query('holiday_id')) {
+            $query->whereHas('collectionDay', function ($q) use ($holidayId) {
+                $q->where('holiday_id', $holidayId);
+            });
+        }
+
         if ($orderTypeId = $request->query('order_type_id')) {
             $query->where('order_type_id', $orderTypeId);
         }
@@ -1009,7 +1104,7 @@ class PreOrderController extends Controller
         $sortField = $request->query('sort', 'created_at');
         $sortDirection = $request->query('direction', 'desc');
 
-        $allowedSorts = ['id', 'order_number', 'client_name', 'phone_number', 'status', 'total_amount', 'created_at'];
+        $allowedSorts = ['id', 'order_number', 'first_name', 'last_name', 'phone_number', 'status', 'total_amount', 'created_at'];
         if (!in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
@@ -1072,7 +1167,8 @@ class PreOrderController extends Controller
             // Header row
             fputcsv($out, [
                 'Order #',
-                'Client Name',
+                'First Name',
+                'Last Name',
                 'Phone Number',
                 'Order Type',
                 'Collection Day',
@@ -1093,7 +1189,8 @@ class PreOrderController extends Controller
 
                 fputcsv($out, [
                     $order->order_number,
-                    $order->client_name,
+                    $order->first_name,
+                    $order->last_name,
                     $order->phone_number,
                     $order->orderType->name ?? '-',
                     $order->collectionBranch->name ?? '-',

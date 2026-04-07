@@ -61,15 +61,24 @@ class PreOrderPaidGeezSMSNotification extends Notification
         $discountType = $isWalkin ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
         $orderMethod = $isWalkin ? 'ከቅርንጫፍ ያዘዙት' : 'ደውለው ያዘዙት';
 
-        $message = "ውድ ደንበኛችን {$this->preOrder->client_name}\n\n";
-        $message .= "ከካልዲስ ኮፊ በቅድመ ትዕዛዝ {$orderMethod} የበዓል ቶርታ ተረጋግጧል።\n\n";
-        $message .= "* የትዕዛዝ መለያ፥ {$this->preOrder->order_number}\n";
-        $message .= "* ያዘዙት ቶርታ፥ {$products}\n";
-        $message .= "* መውሰጃ ቀን፥ {$this->preOrder->collectionDay->name}\n";
-        $message .= "* መውሰጃ ቅርንጫፍ፥ {$this->preOrder->collectionBranch->name}\n";
-        $message .= "* ቅናሽ አይነት፥ {$discountType}\n\n";
-        $message .= "መልካም ገና";
-        
-        return $message;
+        $template = \App\Models\SmsTemplate::where('name', 'Order Paid')->first();
+        if (!$template) {
+            // Fallback just in case
+            return "ውድ ደንበኛችን {$this->preOrder->first_name} {$this->preOrder->last_name}\n\nከካልዲስ ኮፊ በቅድመ ትዕዛዝ {$orderMethod} የበዓል ቶርታ ተረጋግጧል።\n\n* የትዕዛዝ መለያ፥ {$this->preOrder->order_number}\n* ያዘዙት ቶርታ፥ {$products}\n* መውሰጃ ቀን፥ " . ($this->preOrder->collectionDay->name ?? '') . "\n* መውሰጃ ቅርንጫፍ፥ " . ($this->preOrder->collectionBranch->name ?? '') . "\n* ቅናሽ አይነት፥ {$discountType}\n\nመልካም ገና";
+        }
+
+        $replacements = [
+            '{first_name}' => $this->preOrder->first_name,
+            '{last_name}' => $this->preOrder->last_name,
+            '{client_name}' => trim($this->preOrder->first_name . ' ' . $this->preOrder->last_name),
+            '{order_method}' => $orderMethod,
+            '{order_number}' => $this->preOrder->order_number,
+            '{products}' => $products,
+            '{collection_day}' => $this->preOrder->collectionDay->name ?? '',
+            '{collection_branch}' => $this->preOrder->collectionBranch->name ?? '',
+            '{discount_type}' => $discountType,
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $template->content);
     }
 }

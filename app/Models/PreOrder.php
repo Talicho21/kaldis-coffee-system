@@ -13,12 +13,15 @@ class PreOrder extends Model
 
     protected $fillable = [
         'order_number',
-        'client_name',
+        'first_name',
+        'last_name',
         'phone_number',
         'order_type_id',
         'collection_day_id',
         'collection_branch_id',
+        'holiday_id',
         'status',
+
         'total_amount',
         'voucher_code',
         'transaction_reference',
@@ -33,7 +36,9 @@ class PreOrder extends Model
 
     protected $casts = [
         'total_amount' => 'decimal:2',
+        'holiday_id' => 'integer',
         'late_payment' => 'boolean',
+
     ];
 
     /**
@@ -93,8 +98,17 @@ class PreOrder extends Model
     }
 
     /**
+     * @return BelongsTo<Holiday, PreOrder>
+     */
+    public function holiday(): BelongsTo
+    {
+        return $this->belongsTo(Holiday::class);
+    }
+
+    /**
      * @return HasMany<PreOrderItem>
      */
+
     public function items(): HasMany
     {
         return $this->hasMany(PreOrderItem::class);

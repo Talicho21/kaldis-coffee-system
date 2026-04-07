@@ -89,7 +89,7 @@ export default function Show({ preOrder, userPermissions }: Props) {
 		const isWalkin = preOrder.order_type?.name === 'Walkin Customer';
 		const discountType = isWalkin ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
 
-		let message = `ውድ ደምበኛችን ${preOrder.client_name}\n\n`;
+		let message = `ውድ ደምበኛችን ${preOrder.first_name} ${preOrder.last_name}\n\n`;
 		message += 'እንኳን ለዒድ አልፊጥር በሰላም አደረስዎ!\n\n';
 		message += 'ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n';
 		message += `የተጠቀሙት የቅናሽ አይነት፡ ${discountType}\n\n`;
@@ -185,9 +185,15 @@ export default function Show({ preOrder, userPermissions }: Props) {
 					<div className="space-y-4 rounded-lg border p-6">
 						<h3 className="text-lg font-semibold">Customer Information</h3>
 						<div className="space-y-3">
-							<div>
-								<p className="text-sm text-muted-foreground">Client Name</p>
-								<p className="font-medium">{preOrder.client_name}</p>
+							<div className="flex gap-10">
+								<div>
+									<p className="text-sm text-muted-foreground">First Name</p>
+									<p className="font-medium">{preOrder.first_name}</p>
+								</div>
+								<div>
+									<p className="text-sm text-muted-foreground">Second Name</p>
+									<p className="font-medium">{preOrder.last_name || '-'}</p>
+								</div>
 							</div>
 							<div>
 								<p className="text-sm text-muted-foreground">Phone Number</p>

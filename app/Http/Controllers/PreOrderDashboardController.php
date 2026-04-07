@@ -8,6 +8,7 @@ use App\Models\OrderType;
 use App\Models\PreOrder;
 use App\Models\PreOrderItem;
 use App\Models\PreOrderProduct;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -31,15 +32,14 @@ class PreOrderDashboardController extends Controller
 
         // Get filters from request
         $filters = [
-            'date_from' => $request->query('date_from'),
-            'date_to' => $request->query('date_to'),
+            'date' => $request->query('date'),
             'branch_id' => $request->query('branch_id'),
             'product_id' => $request->query('product_id'),
             'collection_day_id' => $request->query('collection_day_id'),
             'holiday_id' => $request->query('holiday_id', $latestHoliday ? (string)$latestHoliday->id : 'all'),
-            'status' => $request->query('status'),
             'order_type_id' => $request->query('order_type_id'),
         ];
+
 
         // Base query
         $query = PreOrder::with([
@@ -50,11 +50,10 @@ class PreOrderDashboardController extends Controller
             'creator:id,name'
         ]);
 
-        // Apply filters
-        $this->applyFilters($query, $filters);
-
         // Get dashboard data
-        $dashboardData = $this->getDashboardData($query, $filters);
+        $dashboardData = $this->getDashboardData($filters);
+
+
 
         // Fetch filter options
         // Fetch dynamic filter options based on active filters (excluding self)
@@ -97,49 +96,62 @@ class PreOrderDashboardController extends Controller
                 'holidays' => $holidays,
             ],
         ]);
+
+
     }
 
     /**
      * Get comprehensive dashboard data
      */
-    private function getDashboardData($query, array $filters): array
+    public function getDashboardData($filters): array
     {
-        // Summary Statistics
+        // 1. Main query - respects all filters (used for Funnel and Hourly trends)
+        $query = PreOrder::query();
+        $this->applyFilters($query, $filters);
+
+        // 2. Sales query - respects all filters EXCEPT status (permanently Paid/Collected)
+        $salesFilters = $filters;
+        $salesFilters['status'] = ['Paid', 'Collected'];
+        $salesQuery = PreOrder::query();
+        $this->applyFilters($salesQuery, $salesFilters);
+
+        // KPI Summary (All status, then converted)
         $summary = $this->getSummaryStats($query->clone());
+        
+        // Summary table data (All statuses as requested)
+        $summaryData = $this->getSummaryTableData($query->clone());
 
-        // Status distribution (keep for now if needed, or remove if fully replaced)
-        $statusDistribution = $this->getStatusDistribution($query->clone());
 
-        // Summary table data
-        $summaryData = $this->getSummaryTableData($query->clone(), $filters);
 
-        // Chart Data
+        // Chart Data (Sales only)
         $charts = [
-            'orderType' => $this->getOrdersByOrderType($query->clone()),
-            'product' => $this->getTopProducts($query->clone()),
-            'collectionDay' => $this->getOrdersByCollectionDay($query->clone()),
+            'orderType' => $this->getOrdersByOrderType($salesQuery->clone()),
+            'product' => $this->getTopProducts($salesQuery->clone()),
+            'collectionDay' => $this->getOrdersByCollectionDay($salesQuery->clone()),
         ];
 
         return [
             'summary' => $summary,
-            'statusDistribution' => $statusDistribution,
             'summaryData' => $summaryData,
             'charts' => $charts,
+            'funnel' => $this->getFunnelData($query->clone()), // Funnel shows the leads (all status)
+            'orderingTime' => $this->getOrderingTimeData($query->clone()),
+            'matrix' => $this->getMatrixData($salesQuery->clone()),
+            'productTrend' => $this->getProductTrendData($filters),
+            'branchMatrix' => $this->getProductBranchMatrixData($salesQuery->clone()),
+            'operatorPerformance' => $this->getOperatorPerformanceData($query->clone()),
+            'breakEvenAnalysis' => $this->getBreakEvenData($filters),
         ];
     }
-
-    /**
+/**
      * Apply filters to the query
      */
     private function applyFilters($query, array $filters): void
     {
-        if (!empty($filters['date_from'])) {
-            $query->whereDate('pre_orders.created_at', '>=', $filters['date_from']);
+        if (!empty($filters['date'])) {
+            $query->whereDate('pre_orders.created_at', $filters['date']);
         }
 
-        if (!empty($filters['date_to'])) {
-            $query->whereDate('pre_orders.created_at', '<=', $filters['date_to']);
-        }
 
         if (!empty($filters['branch_id'])) {
             $query->where('pre_orders.collection_branch_id', $filters['branch_id']);
@@ -156,18 +168,22 @@ class PreOrderDashboardController extends Controller
         }
 
         if (!empty($filters['status'])) {
-            $query->where('pre_orders.status', $filters['status']);
+            if (is_array($filters['status'])) {
+                $query->whereIn('pre_orders.status', $filters['status']);
+            } else {
+                $query->where('pre_orders.status', $filters['status']);
+            }
         }
+
 
         if (!empty($filters['order_type_id'])) {
             $query->where('pre_orders.order_type_id', $filters['order_type_id']);
         }
 
         if (!empty($filters['holiday_id']) && $filters['holiday_id'] !== 'all') {
-            $query->whereHas('collectionDay', function ($q) use ($filters) {
-                $q->where('holiday_id', $filters['holiday_id']);
-            });
+            $query->where('pre_orders.holiday_id', $filters['holiday_id']);
         }
+
     }
 
     /**
@@ -175,33 +191,34 @@ class PreOrderDashboardController extends Controller
      */
     private function getSummaryStats($query): array
     {
-        $totalProducts = PreOrderItem::whereIn('pre_order_id', $query->clone()->select('pre_orders.id'))->sum('quantity');
+        $stats = $query->join('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
+            ->selectRaw("
+                COUNT(DISTINCT phone_number) as total_leads,
+                SUM(pre_order_items.quantity) as total_products,
+                COUNT(DISTINCT pre_orders.id) as total_order_count,
+                SUM(CASE WHEN pre_orders.status IN ('Paid', 'Collected') THEN pre_order_items.quantity * pre_order_items.unit_price ELSE 0 END) as total_revenue,
+                COUNT(DISTINCT CASE WHEN pre_orders.status IN ('Paid', 'Collected') THEN phone_number END) as paid_leads,
+                COUNT(DISTINCT CASE WHEN pre_orders.status IN ('Paid', 'Collected') THEN pre_orders.id END) as paid_orders_count,
+                COUNT(DISTINCT CASE WHEN pre_orders.status = 'Collected' THEN pre_orders.id END) as collected_orders_count
+            ")->first();
 
-        $stats = $query->selectRaw("
-            COUNT(*) as total_orders,
-            COUNT(DISTINCT pre_orders.collection_branch_id) as unique_branches,
-            COUNT(DISTINCT pre_orders.client_name) as unique_customers,
-            SUM(pre_orders.total_amount) as total_revenue,
-            AVG(pre_orders.total_amount) as avg_order_value,
-            COUNT(CASE WHEN pre_orders.status = 'Paid' THEN 1 END) as paid_orders,
-            COUNT(CASE WHEN pre_orders.status = 'Pending' THEN 1 END) as pending_orders,
-            COUNT(CASE WHEN pre_orders.status = 'Collected' THEN 1 END) as collected_orders,
-            COUNT(CASE WHEN pre_orders.status = 'Cancelled' THEN 1 END) as cancelled_orders
-        ")->first();
+        $totalLeads = (int) $stats->total_leads;
+        $totalProducts = (int) $stats->total_products;
+        $paidLeads = (int) $stats->paid_leads;
+        $unpaidOnlyLeads = $totalLeads - $paidLeads; // Mutually exclusive: everyone who didn't buy
+        $paidOrdersCount = (int) $stats->paid_orders_count;
+        $collectedOrdersCount = (int) $stats->collected_orders_count;
 
         return [
-            'total_orders' => (int) $stats->total_orders,
-            'unique_branches' => (int) $stats->unique_branches,
-            'unique_customers' => (int) $stats->unique_customers,
+            'total_leads' => $totalLeads,
+            'total_orders' => $totalProducts, // This is sum of products
             'total_revenue' => (float) $stats->total_revenue,
-            'avg_order_value' => (float) $stats->avg_order_value,
-            'paid_orders' => (int) $stats->paid_orders,
-            'pending_orders' => (int) $stats->pending_orders,
-            'collected_orders' => (int) $stats->collected_orders,
-            'cancelled_orders' => (int) $stats->cancelled_orders,
-            'total_products' => (int) $totalProducts,
+            'conversion_rate' => $totalLeads > 0 ? round(($paidLeads / $totalLeads) * 100, 2) : 0,
+            'cancellation_rate' => $totalLeads > 0 ? round(($unpaidOnlyLeads / $totalLeads) * 100, 2) : 0,
+            'collection_rate' => $paidOrdersCount > 0 ? round(($collectedOrdersCount / $paidOrdersCount) * 100, 2) : 0,
         ];
     }
+
 
     /**
      * Get orders by branch (for matrix table)
@@ -425,10 +442,20 @@ class PreOrderDashboardController extends Controller
     /**
      * Get summary table data with grouped by collection branch
      */
-    private function getSummaryTableData($unusedQuery, array $filters): array
+    private function getSummaryTableData($baseQuery): array
     {
-        // Build query from scratch to ensure clean state and correct joins for summary table
-        $query = DB::table('pre_orders')
+        // 1. Get the unique orders count FIRST (e.g. 261 or 223)
+        $totalUniqueOrders = (int) $baseQuery->clone()->count();
+
+        // 2. Build the query starting from pre_order_items to ensure we count EVERY line item (345)
+        // We filter items by the parent orders that match the current dashboard filters
+        $query = DB::table('pre_order_items')
+            ->join('pre_orders', 'pre_order_items.pre_order_id', '=', 'pre_orders.id')
+            ->leftJoin('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->leftJoin('branches', 'pre_orders.collection_branch_id', '=', 'branches.id')
+            ->leftJoin('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id')
+            ->whereIn('pre_order_items.pre_order_id', $baseQuery->clone()->select('pre_orders.id'))
+            ->whereIn('pre_orders.status', ['Paid', 'Collected'])
             ->selectRaw("
                 pre_orders.collection_branch_id,
                 COALESCE(branches.name, 'Unassigned') as branch_name,
@@ -437,39 +464,8 @@ class PreOrderDashboardController extends Controller
                 COALESCE(pre_order_products.product_name, 'Unknown Product') as product_name,
                 SUM(pre_order_items.quantity) as total_quantity,
                 SUM(pre_order_items.subtotal) as total_amount,
-                COUNT(DISTINCT pre_orders.id) as total_orders
-            ")
-            ->leftJoin('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
-            ->leftJoin('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
-            ->leftJoin('branches', 'pre_orders.collection_branch_id', '=', 'branches.id')
-            ->leftJoin('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id');
-
-        // Apply filters directly to this query
-        if (!empty($filters['date_from'])) {
-            $query->whereDate('pre_orders.created_at', '>=', $filters['date_from']);
-        }
-        if (!empty($filters['date_to'])) {
-            $query->whereDate('pre_orders.created_at', '<=', $filters['date_to']);
-        }
-        if (!empty($filters['branch_id']) && $filters['branch_id'] !== 'all') {
-            $query->where('pre_orders.collection_branch_id', $filters['branch_id']);
-        }
-        if (!empty($filters['product_id']) && $filters['product_id'] !== 'all') {
-            // Filter by product_id on the joined item/product
-            $query->where('pre_order_products.id', $filters['product_id']);
-        }
-        if (!empty($filters['collection_day_id']) && $filters['collection_day_id'] !== 'all') {
-            $query->where('pre_orders.collection_day_id', $filters['collection_day_id']);
-        }
-        if (!empty($filters['status']) && $filters['status'] !== 'all') {
-            $query->where('pre_orders.status', $filters['status']);
-        }
-        if (!empty($filters['order_type_id']) && $filters['order_type_id'] !== 'all') {
-            $query->where('pre_orders.order_type_id', $filters['order_type_id']);
-        }
-        if (!empty($filters['holiday_id']) && $filters['holiday_id'] !== 'all') {
-            $query->where('collection_days.holiday_id', $filters['holiday_id']);
-        }
+                COUNT(*) as total_orders
+            ");
 
         $branchData = $query->groupBy(
             'pre_orders.collection_branch_id',
@@ -484,6 +480,8 @@ class PreOrderDashboardController extends Controller
             ->orderByDesc(DB::raw('SUM(pre_order_items.subtotal)'))
             ->get();
 
+
+
         $summaryData = [];
 
         foreach ($branchData as $branch) {
@@ -497,8 +495,13 @@ class PreOrderDashboardController extends Controller
             ];
         }
 
-        return $summaryData;
+        return [
+            'items' => $summaryData,
+            'totalUniqueOrders' => $totalUniqueOrders
+        ];
     }
+
+
     /**
      * Get orders by order type
      */
@@ -519,4 +522,457 @@ class PreOrderDashboardController extends Controller
             ];
         })->toArray();
     }
+
+    /**
+     * Get data for funnel chart
+     */
+    private function getFunnelData($query): array
+    {
+        $stats = $query->selectRaw("
+            COUNT(DISTINCT phone_number) as leads,
+            COUNT(DISTINCT CASE WHEN status IN ('Paid', 'Collected') THEN phone_number END) as paid,
+            COUNT(DISTINCT CASE WHEN status = 'Collected' THEN phone_number END) as collected
+        ")->first();
+
+        return [
+            ['name' => 'Total leads', 'value' => (int) $stats->leads, 'fill' => '#60A5FA'], // blue-400
+            ['name' => 'Paid', 'value' => (int) $stats->paid, 'fill' => '#34D399'], // emerald-400
+            ['name' => 'Collected', 'value' => (int) $stats->collected, 'fill' => '#A78BFA'], // violet-400
+        ];
+    }
+
+    /**
+     * Get hourly ordering time data
+     */
+    private function getOrderingTimeData($query): array
+    {
+        $hourly = $query->selectRaw("HOUR(created_at) as hour, COUNT(*) as count")
+            ->groupBy('hour')
+            ->orderBy('hour')
+            ->get();
+
+        $dataMap = $hourly->pluck('count', 'hour')->toArray();
+        $result = [];
+        
+        for ($i = 0; $i < 24; $i++) {
+            $hourLabel = $i < 12 ? ($i == 0 ? '12 AM' : $i . ' AM') : ($i == 12 ? '12 PM' : ($i - 12) . ' PM');
+            $result[] = [
+                'hour' => $hourLabel,
+                'count' => $dataMap[$i] ?? 0
+            ];
+        }
+        return $result;
+    }
+
+    /**
+     * Get matrix data (Product vs Collection Day)
+     */
+    private function getMatrixData($query): array
+    {
+        $data = DB::table('pre_order_items')
+            ->join('pre_orders', 'pre_order_items.pre_order_id', '=', 'pre_orders.id')
+            ->join('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->join('collection_days', 'pre_orders.collection_day_id', '=', 'collection_days.id')
+            ->selectRaw("
+                pre_order_products.product_name,
+                collection_days.name as collection_day_name,
+                collection_days.display_order,
+                SUM(pre_order_items.quantity) as total_quantity
+            ")
+            ->whereIn('pre_orders.id', $query->select('pre_orders.id'))
+            ->whereIn('pre_orders.status', ['Paid', 'Collected'])
+            ->groupBy('pre_order_products.product_name', 'collection_days.name', 'collection_days.display_order')
+            ->orderBy('collection_days.display_order')
+            ->get();
+
+
+        $products = $data->pluck('product_name')->unique()->values();
+        $days = $data->pluck('collection_day_name')->unique()->values();
+
+        $matrix = [];
+        foreach ($products as $product) {
+            $row = ['name' => $product];
+            foreach ($days as $day) {
+                // Find matching value or default to 0
+                $val = 0;
+                foreach ($data as $item) {
+                    if ($item->product_name === $product && $item->collection_day_name === $day) {
+                        $val = (int) $item->total_quantity;
+                        break;
+                    }
+                }
+                $row[$day] = $val;
+            }
+            $matrix[] = $row;
+        }
+
+
+        return [
+            'columns' => $days,
+            'rows' => $matrix
+        ];
+    }
+    /**
+     * Get product trend data (Grouped Column Chart)
+     */
+    private function getProductTrendData($filters): array
+    {
+        // 1. Build base query with filters (ignore date-specific filters only)
+        $trendFilters = $filters;
+        unset($trendFilters['date']);
+        
+        $baseQuery = PreOrder::query();
+        $this->applyFilters($baseQuery, $trendFilters);
+        
+        // 2. Identify the latest 7 dates with activity
+        $activeDates = (clone $baseQuery)
+            ->selectRaw('DATE(created_at) as order_date')
+            ->groupBy('order_date')
+            ->orderByDesc('order_date')
+            ->limit(7)
+            ->pluck('order_date')
+            ->sort()
+            ->values();
+
+        if ($activeDates->isEmpty()) {
+            return ['products' => [], 'data' => []];
+        }
+
+        $startDate = $activeDates->first();
+        $endDate = $activeDates->last();
+
+        // 3. Get Top 5 Products for this period
+        $topProducts = PreOrderItem::query()
+            ->join('pre_orders', 'pre_order_items.pre_order_id', '=', 'pre_orders.id')
+            ->join('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->whereIn('pre_orders.id', (clone $baseQuery)->whereBetween('created_at', [Carbon::parse($startDate)->startOfDay(), Carbon::parse($endDate)->endOfDay()])->select('id'))
+            ->selectRaw('pre_order_products.product_name, SUM(pre_order_items.quantity) as total')
+            ->groupBy('pre_order_products.id', 'pre_order_products.product_name')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->pluck('product_name')
+            ->toArray();
+
+        // 4. Get Daily Data
+        $data = PreOrderItem::query()
+            ->join('pre_orders', 'pre_order_items.pre_order_id', '=', 'pre_orders.id')
+            ->join('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->whereIn('pre_orders.id', (clone $baseQuery)->whereBetween('created_at', [Carbon::parse($startDate)->startOfDay(), Carbon::parse($endDate)->endOfDay()])->select('id'))
+            ->whereIn('pre_order_products.product_name', $topProducts)
+            ->selectRaw("
+                DATE(pre_orders.created_at) as order_date,
+                pre_order_products.product_name,
+                SUM(pre_order_items.quantity) as total_quantity
+            ")
+            ->groupBy('order_date', 'pre_order_products.product_name')
+            ->get();
+
+        // 5. Format for Recharts
+        $result = [];
+        foreach ($activeDates as $dateString) {
+            $dateObj = Carbon::parse($dateString);
+            $formattedDate = $dateObj->format('M d');
+            
+            $row = ['date' => $formattedDate];
+            foreach ($topProducts as $product) {
+                $item = $data->where('order_date', $dateString)->where('product_name', $product)->first();
+                $row[$product] = $item ? (int) $item->total_quantity : 0;
+            }
+            $result[] = $row;
+        }
+
+        return [
+            'products' => $topProducts,
+            'data' => $result
+        ];
+    }
+    /**
+     * Get Product vs Branch matrix data
+     */
+    private function getProductBranchMatrixData($query): array
+    {
+        $data = DB::table('pre_order_items')
+            ->join('pre_orders', 'pre_order_items.pre_order_id', '=', 'pre_orders.id')
+            ->join('pre_order_products', 'pre_order_items.pre_order_product_id', '=', 'pre_order_products.id')
+            ->join('branches', 'pre_orders.collection_branch_id', '=', 'branches.id')
+            ->selectRaw("
+                pre_order_products.product_name,
+                branches.name as branch_name,
+                SUM(pre_order_items.quantity) as total_quantity
+            ")
+            ->whereIn('pre_orders.id', $query->select('pre_orders.id'))
+            ->whereIn('pre_orders.status', ['Paid', 'Collected'])
+            ->groupBy('pre_order_products.product_name', 'branches.name')
+
+            ->get();
+
+        $branches = $data->pluck('branch_name')->unique()->sort()->values();
+        $products = $data->pluck('product_name')->unique()->sort()->values()->toArray();
+
+        $matrix = [];
+        foreach ($branches as $branch) {
+            $row = ['name' => $branch, 'total' => 0];
+            foreach ($products as $product) {
+                $val = $data->where('branch_name', $branch)->where('product_name', $product)->first();
+                $qty = $val ? (int) $val->total_quantity : 0;
+                $row[$product] = $qty;
+                $row['total'] += $qty;
+            }
+            $matrix[] = $row;
+        }
+
+        return [
+            'columns' => $products,
+            'rows' => $matrix
+        ];
+    }
+
+
+    /**
+     * Get Break-Even Analysis Data
+     */
+    private function getBreakEvenData($filters): array
+    {
+        // Get current holiday
+        $holidayId = $filters['holiday_id'] ?? null;
+        if (!$holidayId || $holidayId === 'all') {
+            return [
+                'breakEven' => null,
+                'chartData' => [],
+                'summary' => [
+                    'fixedCosts' => 0,
+                    'variableCosts' => 0,
+                    'revenue' => 0,
+                    'profit' => 0,
+                    'breakEvenOrders' => 0,
+                    'currentOrders' => 0,
+                    'ordersToBreakEven' => 0,
+                    'isProfitable' => false,
+                ]
+            ];
+        }
+
+        // 1. Get General (Fixed) Costs - costs NOT linked to a specific product
+        $fixedCostsData = DB::table('pre_order_costs as poc')
+            ->join('pre_order_cost_categories as pocc', 'poc.category_id', '=', 'pocc.id')
+            ->where('poc.holiday_id', $holidayId)
+            ->whereNull('poc.pre_order_product_id')
+            ->selectRaw("
+                pocc.name as category_name,
+                SUM(poc.amount) as total_amount
+            ")
+            ->groupBy('pocc.name')
+            ->pluck('total_amount', 'category_name')
+            ->toArray();
+
+        // Convert to numerical values
+        $costBreakdown = array_map('floatval', $fixedCostsData);
+        $totalNonProductFixedCosts = array_sum($costBreakdown);
+
+        // 2. Get Product (Variable) Costs - costs LINKED to specific products
+        $variableCostsData = DB::table('pre_order_costs as poc')
+            ->join('pre_order_items as poi', function($join) use ($holidayId) {
+                $join->on('poc.pre_order_product_id', '=', 'poi.pre_order_product_id')
+                     ->whereExists(function($query) use ($holidayId) {
+                         $query->select(DB::raw(1))
+                               ->from('pre_orders as po')
+                               ->whereRaw('po.id = poi.pre_order_id')
+                               ->where('po.holiday_id', $holidayId)
+                               ->whereIn('po.status', ['Paid', 'Collected']);
+                     });
+            })
+            ->where('poc.holiday_id', $holidayId)
+            ->whereNotNull('poc.pre_order_product_id')
+            ->selectRaw("SUM(poc.amount * poi.quantity) as total_variable_cost")
+            ->first();
+
+        $totalVariableCosts = (float) ($variableCostsData->total_variable_cost ?? 0);
+
+        // 3. Get Sales Data (Revenue and Orders)
+        $preOrderData = DB::table('pre_orders as po')
+            ->where('po.holiday_id', $holidayId)
+            ->whereIn('po.status', ['Paid', 'Collected'])
+            ->selectRaw("
+                COUNT(DISTINCT po.id) as total_orders,
+                SUM(po.total_amount) as total_revenue
+            ")
+            ->first();
+
+        $totalRevenue = (float) $preOrderData->total_revenue;
+        $totalOrders = (int) $preOrderData->total_orders;
+        
+        // 4. Calculate Margins
+        $avgRevenuePerOrder = $totalOrders > 0 ? ($totalRevenue / $totalOrders) : 0;
+        $avgVariableCostPerOrder = $totalOrders > 0 ? ($totalVariableCosts / $totalOrders) : 0;
+        $contributionMargin = $avgRevenuePerOrder - $avgVariableCostPerOrder;
+        
+        // 5. Calculate Break-Even
+        // Condition: BEP = Fixed Costs / contribution margin
+        // If margin <= 0, break-even is unreachable (losing money per order)
+        $isUnreachable = $contributionMargin <= 0;
+        $breakEvenOrders = (!$isUnreachable && $contributionMargin > 0) 
+            ? ceil($totalNonProductFixedCosts / $contributionMargin) 
+            : null;
+            
+        $currentProfit = $totalRevenue - ($totalNonProductFixedCosts + $totalVariableCosts);
+        $ordersToBreakEven = ($breakEvenOrders !== null) ? max(0, $breakEvenOrders - $totalOrders) : null;
+        $isProfitable = $currentProfit > 0;
+
+        // 6. Generate Chart Data (slope-based costs simulation)
+        $chartData = [];
+        $displayMax = max($totalOrders, (int)($breakEvenOrders ?? 0)) + 20;
+        $step = max(1, floor($displayMax / 15));
+
+        for ($i = 0; $i <= $displayMax; $i += $step) {
+            $cumulativeRevenue = $i * $avgRevenuePerOrder;
+            $cumulativeVariableCosts = $i * $avgVariableCostPerOrder;
+            $cumulativeTotalCosts = $totalNonProductFixedCosts + $cumulativeVariableCosts;
+            $profit = $cumulativeRevenue - $cumulativeTotalCosts;
+
+            $chartData[] = [
+                'orders' => $i,
+                'revenue' => round($cumulativeRevenue, 2),
+                'fixedCosts' => round($totalNonProductFixedCosts, 2),
+                'totalCosts' => round($cumulativeTotalCosts, 2),
+                'profit' => round($profit, 2),
+                'isBreakEven' => $breakEvenOrders !== null && $i >= $breakEvenOrders && ($i - $step < $breakEvenOrders),
+                'isCurrent' => $i >= $totalOrders && ($i - $step < $totalOrders),
+            ];
+        }
+
+        // 7. Generate Historical Trends (Daily Aggregates)
+        $dailyData = DB::table('pre_orders as po')
+            ->where('po.holiday_id', $holidayId)
+            ->whereIn('po.status', ['Paid', 'Collected'])
+            ->selectRaw("
+                DATE(po.created_at) as date,
+                COUNT(po.id) as daily_orders,
+                SUM(po.total_amount) as daily_revenue
+            ")
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        $historicalTrends = [];
+        $runningTotalOrders = 0;
+        $runningTotalRevenue = 0;
+        $runningTotalContribution = 0;
+        $runningTotalQuantity = 0;
+
+        foreach ($dailyData as $day) {
+            // Calculate daily variable (product) costs for this day's orders
+            $dailyVariableCosts = DB::table('pre_order_costs as poc')
+                ->join('pre_order_items as poi', function($join) use ($day) {
+                    $join->on('poc.pre_order_product_id', '=', 'poi.pre_order_product_id')
+                         ->whereExists(function($query) use ($day) {
+                             $query->select(DB::raw(1))
+                                   ->from('pre_orders as po')
+                                   ->whereRaw('po.id = poi.pre_order_id')
+                                   ->whereDate('po.created_at', $day->date)
+                                   ->whereIn('po.status', ['Paid', 'Collected']);
+                         });
+                })
+                ->where('poc.holiday_id', $holidayId)
+                ->whereNotNull('poc.pre_order_product_id')
+                ->sum(DB::raw('poc.amount * poi.quantity'));
+
+            $dayRevenue = (float) $day->daily_revenue;
+            $dayOrders = (int) $day->daily_orders;
+            $dayContribution = $dayRevenue - $dailyVariableCosts;
+            
+            // Get quantity for the day
+            $dayQuantity = DB::table('pre_order_items as poi')
+                ->join('pre_orders as po', 'poi.pre_order_id', '=', 'po.id')
+                ->where('po.holiday_id', $holidayId)
+                ->whereIn('po.status', ['Paid', 'Collected'])
+                ->whereDate('po.created_at', $day->date)
+                ->sum('poi.quantity');
+
+            $runningTotalOrders += $dayOrders;
+            $runningTotalRevenue += $dayRevenue;
+            $runningTotalContribution += $dayContribution;
+            $runningTotalQuantity += $dayQuantity;
+
+            $historicalTrends[] = [
+                'date' => $day->date,
+                'cumulative_orders' => $runningTotalOrders,
+                'cumulative_quantity' => (int) $runningTotalQuantity,
+                'cumulative_contribution' => round($runningTotalContribution, 2),
+                'avg_contribution' => $runningTotalOrders > 0 ? round($runningTotalContribution / $runningTotalOrders, 2) : 0,
+            ];
+        }
+
+        $progressToGoal = ($breakEvenOrders !== null && $breakEvenOrders > 0)
+            ? (float) min(100, round(($totalOrders / $breakEvenOrders) * 100, 1))
+            : ($totalOrders > 0 && ($breakEvenOrders === null || $breakEvenOrders === 0) ? 100 : 0);
+
+        return [
+            'breakEven' => [
+                'ordersNeeded' => $breakEvenOrders,
+                'isUnreachable' => $isUnreachable,
+                'contributionMargin' => round($contributionMargin, 2),
+                'marginPercentage' => $avgRevenuePerOrder > 0 ? round(($contributionMargin / $avgRevenuePerOrder) * 100, 2) : 0,
+            ],
+            'chartData' => $chartData,
+            'summary' => [
+                'fixedCosts' => round($totalNonProductFixedCosts, 2),
+                'variableCosts' => round($totalVariableCosts, 2),
+                'revenue' => round($totalRevenue, 2),
+                'profit' => round($currentProfit, 2),
+                'breakEvenOrders' => $breakEvenOrders,
+                'currentOrders' => $totalOrders,
+                'ordersToBreakEven' => $ordersToBreakEven,
+                'isProfitable' => $isProfitable,
+                'isUnreachable' => $isUnreachable,
+                'avgRevenuePerOrder' => round($avgRevenuePerOrder, 2),
+                'avgProductCostPerOrder' => round($avgVariableCostPerOrder, 2),
+                'costBreakdown' => $costBreakdown,
+                'progressToGoal' => $progressToGoal,
+                'isProfitZone' => $totalOrders >= ($breakEvenOrders ?? 1) && ($breakEvenOrders !== null),
+            ],
+            'historicalTrends' => $historicalTrends,
+        ];
+    }
+
+    /**
+     * Get Operator Performance stats
+     */
+
+    private function getOperatorPerformanceData($query): array
+    {
+        return DB::table('pre_orders')
+            ->join('users', 'pre_orders.created_by', '=', 'users.id')
+            ->leftJoin('pre_order_items', 'pre_orders.id', '=', 'pre_order_items.pre_order_id')
+            ->leftJoin('employees', 'users.employee_id', '=', 'employees.id')
+            ->leftJoin('branches', 'employees.branch_id', '=', 'branches.id')
+            ->selectRaw("
+                users.name,
+                COALESCE(branches.name, 'Admin') as branch_name,
+                COUNT(DISTINCT pre_orders.phone_number) as leads,
+                COUNT(DISTINCT pre_orders.id) as orders,
+                SUM(pre_order_items.quantity) as served_items,
+                SUM(CASE WHEN pre_orders.status IN ('Paid', 'Collected') THEN pre_order_items.quantity ELSE 0 END) as sold_items,
+                SUM(CASE WHEN pre_orders.status IN ('Paid', 'Collected') THEN pre_orders.total_amount ELSE 0 END) as revenue
+            ")
+            ->whereIn('pre_orders.id', $query->select('pre_orders.id'))
+            ->groupBy('users.id', 'users.name', 'branches.name')
+            ->orderByDesc('orders')
+            ->get()
+            ->map(function ($item) {
+                $totalServed = (int) $item->served_items;
+                $totalSold = (int) $item->sold_items;
+
+                return [
+                    'name' => $item->name,
+                    'branch' => $item->branch_name,
+                    'leads' => (int) $item->leads,
+                    'orders' => (int) $item->orders,
+                    'items' => $totalServed,
+                    'revenue' => (float) $item->revenue,
+                    'conversion_rate' => $totalServed > 0 ? round(($totalSold / $totalServed) * 100, 1) : 0
+                ];
+            })
+            ->toArray();
+    }
 }
+

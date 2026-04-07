@@ -104,11 +104,11 @@ try {
             // Insert Pre-Order
             $stmt = $destDB->prepare("
                 INSERT INTO pre_orders (
-                    order_number, client_name, phone_number, order_type_id, 
+                    order_number, first_name, last_name, phone_number, order_type_id, 
                     collection_day_id, collection_branch_id, status, total_amount, 
                     payment_method, transaction_reference, created_by, updated_by, 
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $clientName = trim($order['first_name'] . ' ' . $order['last_name']);
@@ -129,7 +129,8 @@ try {
 
             $stmt->execute([
                 $orderNumber,
-                $clientName,
+                $order['first_name'],
+                $order['last_name'],
                 $normalizedPhone,
                 $targetTypeId,
                 $destDayId,

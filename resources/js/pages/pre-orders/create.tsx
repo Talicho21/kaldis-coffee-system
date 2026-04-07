@@ -39,7 +39,8 @@ type OrderItem = {
 
 export default function Create({ branches, collectionDays, orderTypes, products, userPermissions }: Props) {
 	const { data, setData, post, processing, errors } = useForm<{
-		client_name: string;
+		first_name: string;
+		last_name: string;
 		phone_number: string;
 		order_type_id: string;
 		collection_day_id: string;
@@ -51,7 +52,8 @@ export default function Create({ branches, collectionDays, orderTypes, products,
 		late_payment: boolean;
 		payment_method: string;
 	}>({
-		client_name: '',
+		first_name: '',
+		last_name: '',
 		phone_number: '',
 		order_type_id: '',
 		collection_day_id: '',
@@ -169,15 +171,26 @@ export default function Create({ branches, collectionDays, orderTypes, products,
 
 						<div className="grid gap-4 md:grid-cols-2">
 							<div className="grid gap-2">
-								<Label htmlFor="client_name">Client Full Name *</Label>
+								<Label htmlFor="first_name">First Name *</Label>
 								<Input
-									id="client_name"
-									value={data.client_name}
-									onChange={(e) => setData('client_name', e.target.value)}
+									id="first_name"
+									value={data.first_name}
+									onChange={(e) => setData('first_name', e.target.value)}
 									required
-									placeholder="Enter client full name"
+									placeholder="Enter first name"
 								/>
-								<InputError message={errors.client_name} />
+								<InputError message={errors.first_name} />
+							</div>
+
+							<div className="grid gap-2">
+								<Label htmlFor="last_name">Second Name</Label>
+								<Input
+									id="last_name"
+									value={data.last_name}
+									onChange={(e) => setData('last_name', e.target.value)}
+									placeholder="Enter second name"
+								/>
+								<InputError message={errors.last_name} />
 							</div>
 
 							<div className="grid gap-2">

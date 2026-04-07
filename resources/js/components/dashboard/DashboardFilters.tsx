@@ -8,8 +8,8 @@ import { router } from '@inertiajs/react';
 
 interface DashboardFiltersProps {
 	filters: {
-		date_from?: string;
-		date_to?: string;
+		date?: string;
+
 		branch_id?: string;
 		product_id?: string;
 		collection_day_id?: string;
@@ -26,16 +26,22 @@ interface DashboardFiltersProps {
 		holidays: Array<{ id: number; name: string }>;
 	};
 	onExportCsv?: () => void;
+    disableAllHolidays?: boolean;
 }
+
+
 
 export default function DashboardFilters({
 	filters,
 	options,
-	onExportCsv
+	onExportCsv,
+    disableAllHolidays = false,
 }: DashboardFiltersProps) {
+
+
 	const safeFilters = {
-		date_from: filters?.date_from || '',
-		date_to: filters?.date_to || '',
+		date: filters?.date || '',
+
 		branch_id: filters?.branch_id || 'all',
 		product_id: filters?.product_id || 'all',
 		collection_day_id: filters?.collection_day_id || 'all',
@@ -46,22 +52,38 @@ export default function DashboardFilters({
 
 	const [filterValues, setFilterValues] = useState(safeFilters);
 
+
+
 	useEffect(() => {
 		setFilterValues(safeFilters);
 	}, [JSON.stringify(filters)]);
 
+    // Handle auto-switching holiday when "All" is disabled (e.g. Break-Even tab)
+    useEffect(() => {
+        if (disableAllHolidays && filterValues.holiday_id === 'all' && options.holidays.length > 0) {
+            handleFilterChange('holiday_id', String(options.holidays[0].id));
+        }
+    }, [disableAllHolidays]);
+
 	const handleFilterChange = (key: string, value: string) => {
-		const newFilters = { ...filterValues, [key]: value };
+		// When holiday changes, reset collection_day_id so a stale day from
+		// another holiday does not linger and make it appear as if only that
+		// holiday's data is shown.
+		const newFilters = key === 'holiday_id'
+			? { ...filterValues, holiday_id: value, collection_day_id: 'all' }
+			: { ...filterValues, [key]: value };
+
 		setFilterValues(newFilters);
-		
-		// Auto-filter logic
+
+		// Build query params — omit 'all' values except holiday_id which must
+		// always be sent explicitly so it overrides the server-side default.
 		const queryParams: Record<string, any> = {};
-		if (newFilters.date_from) queryParams.date_from = newFilters.date_from;
-		if (newFilters.date_to) queryParams.date_to = newFilters.date_to;
+		if (newFilters.date) queryParams.date = newFilters.date;
 		if (newFilters.branch_id && newFilters.branch_id !== 'all') queryParams.branch_id = newFilters.branch_id;
 		if (newFilters.product_id && newFilters.product_id !== 'all') queryParams.product_id = newFilters.product_id;
 		if (newFilters.collection_day_id && newFilters.collection_day_id !== 'all') queryParams.collection_day_id = newFilters.collection_day_id;
-		if (newFilters.holiday_id && newFilters.holiday_id !== 'all') queryParams.holiday_id = newFilters.holiday_id;
+		// Always include holiday_id so 'all' explicitly overrides the backend default
+		queryParams.holiday_id = newFilters.holiday_id;
 		if (newFilters.status && newFilters.status !== 'all') queryParams.status = newFilters.status;
 		if (newFilters.order_type_id && newFilters.order_type_id !== 'all') queryParams.order_type_id = newFilters.order_type_id;
 
@@ -74,16 +96,12 @@ export default function DashboardFilters({
 	return (
 		<div className="rounded-lg bg-white p-5 border border-gray-200 shadow-sm mb-6">
 			<div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4 items-end">
-				{/* Date From */}
+				{/* Order Date */}
 				<div className="space-y-2">
-					<Label htmlFor="date_from" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date From</Label>
-					<Input type="date" id="date_from" className="h-10 text-sm border-gray-200 focus:ring-blue-500" value={filterValues.date_from} onChange={(e) => handleFilterChange('date_from', e.target.value)} />
+					<Label htmlFor="date" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Order Date</Label>
+					<Input type="date" id="date" className="h-10 text-sm border-gray-200 focus:ring-blue-500" value={filterValues.date} onChange={(e) => handleFilterChange('date', e.target.value)} />
 				</div>
-				{/* Date To */}
-				<div className="space-y-2">
-					<Label htmlFor="date_to" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date To</Label>
-					<Input type="date" id="date_to" className="h-10 text-sm border-gray-200 focus:ring-blue-500" value={filterValues.date_to} onChange={(e) => handleFilterChange('date_to', e.target.value)} />
-				</div>
+
 				{/* Branch */}
 				<div className="space-y-2">
 					<Label htmlFor="branch" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Collection Branch</Label>
@@ -106,17 +124,21 @@ export default function DashboardFilters({
 						</SelectContent>
 					</Select>
 				</div>
-				{/* Order Type */}
+				{/* Platform */}
 				<div className="space-y-2">
-					<Label htmlFor="order_type" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Order Type</Label>
+					<Label htmlFor="order_type" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+						Platform
+					</Label>
 					<Select value={filterValues.order_type_id} onValueChange={(val) => handleFilterChange('order_type_id', val)}>
-						<SelectTrigger className="h-10 text-sm border-gray-200"><SelectValue placeholder="All Types" /></SelectTrigger>
+						<SelectTrigger className="h-10 text-sm border-gray-200"><SelectValue placeholder="All Platforms" /></SelectTrigger>
 						<SelectContent>
-							<SelectItem value="all">All Types</SelectItem>
+							<SelectItem value="all">All Platforms</SelectItem>
 							{options.orderTypes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
 						</SelectContent>
 					</Select>
 				</div>
+
+
 				{/* Product */}
 				<div className="space-y-2">
 					<Label htmlFor="product" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</Label>
@@ -128,24 +150,15 @@ export default function DashboardFilters({
 						</SelectContent>
 					</Select>
 				</div>
-				{/* Status */}
-				<div className="space-y-2">
-					<Label htmlFor="status" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</Label>
-					<Select value={filterValues.status} onValueChange={(val) => handleFilterChange('status', val)}>
-						<SelectTrigger className="h-10 text-sm border-gray-200"><SelectValue placeholder="All Statuses" /></SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All Statuses</SelectItem>
-							{options.statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-						</SelectContent>
-					</Select>
-				</div>
+
+
 				{/* Holiday */}
 				<div className="space-y-2">
 					<Label htmlFor="holiday" className="text-xs font-bold text-green-700 uppercase tracking-wider">Holiday</Label>
 					<Select value={filterValues.holiday_id} onValueChange={(val) => handleFilterChange('holiday_id', val)}>
 						<SelectTrigger className="h-10 text-sm border-green-200 focus:ring-green-500"><SelectValue placeholder="All Holidays" /></SelectTrigger>
 						<SelectContent>
-							<SelectItem value="all">All Holidays</SelectItem>
+							{!disableAllHolidays && <SelectItem value="all">All Holidays</SelectItem>}
 							{options.holidays.map((h) => <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>)}
 						</SelectContent>
 					</Select>

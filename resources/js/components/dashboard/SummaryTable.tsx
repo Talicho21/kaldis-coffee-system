@@ -18,6 +18,7 @@ interface SummaryTableProps {
 		totalAmount: number;
 		totalOrders: number;
 	}>;
+	totalOrders: number;
 }
 
 interface GroupedData {
@@ -25,12 +26,21 @@ interface GroupedData {
 	totalQuantity: number;
 	totalAmount: number;
 	totalOrders: number;
-	items: SummaryTableProps['data'];
+	items: Array<{
+		collectionBranch: string;
+		collectionDay: string;
+		product: string;
+		totalQuantity: number;
+		totalAmount: number;
+		totalOrders: number;
+	}>;
 }
 
 export default function SummaryTable({
 	data,
+	totalOrders,
 }: SummaryTableProps) {
+
 	const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
 
 	const formatCurrency = (amount: number) => {
@@ -97,8 +107,8 @@ export default function SummaryTable({
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Orders by Collection Branch</CardTitle>
-				<CardDescription>Grouped by branch. Click arrows to expand details.</CardDescription>
+				<CardTitle>Confirmed Production Ledger</CardTitle>
+				<CardDescription>Items ready for production (Paid & Collected). Grouped by branch.</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<div className="overflow-x-auto">
@@ -179,6 +189,8 @@ export default function SummaryTable({
 								<TableCell className="text-right text-base">
 									{groupedData.reduce((sum, group) => sum + group.totalQuantity, 0).toLocaleString()}
 								</TableCell>
+
+
 								<TableCell className="text-right text-lg text-green-700">
 									{formatCurrency(groupedData.reduce((sum, group) => sum + group.totalAmount, 0))}
 								</TableCell>

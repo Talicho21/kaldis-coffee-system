@@ -238,11 +238,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Pre-Orders
     Route::middleware('permission:view pre-orders')->group(function () {
-        Route::get('pre-orders/dashboard', [PreOrderDashboardController::class, 'index'])->name('pre-orders.dashboard');
+        // Pre-order Dashboard
+        Route::get('/pre-orders/dashboard', [PreOrderDashboardController::class, 'index'])->name('pre-orders.dashboard');
+
         Route::get('pre-orders/export', [\App\Http\Controllers\PreOrderController::class, 'export'])->name('pre-orders.export')->middleware('permission:view all pre-orders');
         Route::post('pre-orders/{preOrder}/update-status', [\App\Http\Controllers\PreOrderController::class, 'updateStatus'])->name('pre-orders.update-status')->middleware('permission:update pre-order status|update all pre-order status|mark pre-order as paid|cancel pre-orders');
         Route::post('pre-orders/send-bulk-sms-reminders', [\App\Http\Controllers\PreOrderController::class, 'sendBulkSmsReminders'])->name('pre-orders.send-bulk-sms-reminders')->middleware('permission:send bulk sms reminders');
         Route::post('pre-orders/bulk-cancel', [\App\Http\Controllers\PreOrderController::class, 'bulkCancel'])->name('pre-orders.bulk-cancel')->middleware('permission:cancel pre-orders');
+        Route::get('pre-orders/sms-templates', [\App\Http\Controllers\SmsTemplateController::class, 'index'])->name('pre-orders.sms-templates.index');
+        Route::put('pre-orders/sms-templates/{smsTemplate}', [\App\Http\Controllers\SmsTemplateController::class, 'update'])->name('pre-orders.sms-templates.update');
+        
+        // Cost Management
+        Route::middleware('permission:manage pre-order costs')->prefix('pre-orders/costs')->group(function () {
+            Route::get('categories', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'index'])->name('pre-order-costs.categories.index');
+            Route::post('categories', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'store'])->name('pre-order-costs.categories.store');
+            Route::put('categories/{preOrderCostCategory}', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'update'])->name('pre-order-costs.categories.update');
+            Route::delete('categories/{preOrderCostCategory}/delete', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'destroy'])->name('pre-order-costs.categories.destroy');
+            
+            Route::get('/', [\App\Http\Controllers\PreOrderCostController::class, 'index'])->name('pre-order-costs.index');
+            Route::post('/', [\App\Http\Controllers\PreOrderCostController::class, 'store'])->name('pre-order-costs.store');
+            Route::put('{preOrderCost}', [\App\Http\Controllers\PreOrderCostController::class, 'update'])->name('pre-order-costs.update');
+            Route::delete('{preOrderCost}/delete', [\App\Http\Controllers\PreOrderCostController::class, 'destroy'])->name('pre-order-costs.destroy');
+            Route::post('bulk-update-products', [\App\Http\Controllers\PreOrderCostController::class, 'bulkUpdateProductCosts'])->name('pre-order-costs.bulk-update-products');
+            Route::get('active-products', [\App\Http\Controllers\PreOrderCostController::class, 'getActiveProducts'])->name('pre-order-costs.active-products');
+        });
+
         Route::resource('pre-orders', \App\Http\Controllers\PreOrderController::class);
     });
 

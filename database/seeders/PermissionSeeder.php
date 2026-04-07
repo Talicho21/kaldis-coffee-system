@@ -234,5 +234,10 @@ class PermissionSeeder extends Seeder
         // Deleted Evaluations (Audit Trail)
         Permission::firstOrCreate(['name' => 'view deleted evaluations']);
         Permission::firstOrCreate(['name' => 'restore deleted evaluations']);
+
+        // Link management
+        Permission::firstOrCreate(['name'=>'view external links']);
+        Permission::firstOrCreate(['name'=>'manage external links']);
+        Permission::firstOrCreate(['name'=>'view employee directory']);
     }
 }

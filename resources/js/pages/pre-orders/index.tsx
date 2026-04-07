@@ -2,11 +2,13 @@ import { type BreadcrumbItem, type PaginationData, type SharedData } from '@/typ
 import { type PreOrder, type OrderType, type CollectionDay } from '@/types/pre-order';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { PlusIcon, SearchIcon, EyeIcon, PencilIcon, Trash2Icon, ArrowUpDown, ArrowUp, ArrowDown, CopyIcon, MessageSquareIcon, DownloadIcon, FileTextIcon, TableIcon, ChevronDownIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
+import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -39,13 +41,23 @@ type Props = {
     preOrders: PaginationData<PreOrder>;
     branches: Array<{ id: number; name: string }>;
     collectionDays: CollectionDay[];
+    holidays: Array<{ id: number; name: string }>;
     orderTypes: OrderType[];
+    paidProductsCount: number;
+    operatorStats: {
+        total: number;
+        paid: number;
+        pending: number;
+    };
+    operators: Array<{ id: number; name: string }>;
     filters: {
         search?: string;
-        status?: string;
-        branch_id?: string;
-        collection_day_id?: string;
-        order_type_id?: string;
+        status?: string | string[];
+        branch_id?: string | string[];
+        collection_day_id?: string | string[];
+        holiday_id?: string | string[];
+        order_type_id?: string | string[];
+        created_by?: string | string[];
         late_payment?: string;
         sort?: string;
         direction?: 'asc' | 'desc';
@@ -60,7 +72,7 @@ const statusColors = {
     Cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
 
-export default function Index({ preOrders, branches, collectionDays, orderTypes, filters, userPermissions }: Props) {
+export default function Index({ preOrders, branches, collectionDays, holidays, orderTypes, operators, paidProductsCount, operatorStats, filters, userPermissions }: Props) {
     const { auth } = usePage<SharedData>().props;
     const currentUserId = auth.user.id;
 
@@ -106,11 +118,32 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
             ? userPermissions?.includes('update walkin pre-orders')
             : userPermissions?.includes('update regular pre-orders');
     };
+    const ensureArray = (val: any): string[] => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (val === 'all') return [];
+        return [val.toString()];
+    };
+
     const [search, setSearch] = useState(filters.search || '');
-    const [status, setStatus] = useState(filters.status || 'all');
-    const [branchId, setBranchId] = useState(filters.branch_id || 'all');
-    const [collectionDayId, setCollectionDayId] = useState(filters.collection_day_id || 'all');
+    const [status, setStatus] = useState<string[]>(ensureArray(filters.status));
+    const [branchId, setBranchId] = useState<string[]>(ensureArray(filters.branch_id));
+    const [collectionDayId, setCollectionDayId] = useState<string[]>(ensureArray(filters.collection_day_id));
+    const [holidayId, setHolidayId] = useState<string[]>(ensureArray(filters.holiday_id));
+    const [createdBy, setCreatedBy] = useState<string[]>(ensureArray(filters.created_by));
     const [latePayment, setLatePayment] = useState(filters.late_payment || 'all');
+
+    const statusOptions: MultiSelectOption[] = [
+        { value: 'Pending', label: 'Pending' },
+        { value: 'Paid', label: 'Paid' },
+        { value: 'Collected', label: 'Collected' },
+        { value: 'Cancelled', label: 'Cancelled' },
+    ];
+
+    const branchOptions = useMemo(() => branches.map(b => ({ value: b.id.toString(), label: b.name })), [branches]);
+    const dayOptions = useMemo(() => collectionDays.map(d => ({ value: d.id.toString(), label: d.name })), [collectionDays]);
+    const holidayOptions = useMemo(() => holidays.map(h => ({ value: h.id.toString(), label: h.name })), [holidays]);
+    const operatorOptions = useMemo(() => operators.map(o => ({ value: o.id.toString(), label: o.name })), [operators]);
 
     const handleSort = (field: string) => {
         const currentSort = filters.sort;
@@ -137,9 +170,11 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
     const handleFilter = () => {
         const params: any = {};
         if (search) params.search = search;
-        if (status !== 'all') params.status = status;
-        if (branchId !== 'all') params.branch_id = branchId;
-        if (collectionDayId !== 'all') params.collection_day_id = collectionDayId;
+        if (status.length > 0) params.status = status;
+        if (branchId.length > 0) params.branch_id = branchId;
+        if (collectionDayId.length > 0) params.collection_day_id = collectionDayId;
+        if (holidayId.length > 0) params.holiday_id = holidayId;
+        if (createdBy.length > 0) params.created_by = createdBy;
         if (latePayment !== 'all') params.late_payment = latePayment;
 
         router.get('/pre-orders', params, { preserveState: true });
@@ -184,7 +219,7 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
         const isWalkin = preOrder.order_type?.name === 'Walkin Customer';
         const discountType = isWalkin ? 'ቅርንጫፍ ደንበኛ' : 'ሸገር ገበታ';
 
-        let message = `ውድ ደምበኛችን ${preOrder.client_name}\n\n`;
+        let message = `ውድ ደምበኛችን ${preOrder.first_name} ${preOrder.last_name}\n\n`;
         message += "እንኳን ለዒድ አልፊጥር በሰላም አደረስዎ!\n\n";
         message += "ከካልዲስ ኮፊ የበዓል ቶርታ ስላዘዙ በጣም እናመሰግናለን። ክፍያዎት ደርስዎናል። የትዕዛዝዎ ዝርዝር መረጃ ከስር ያለውን ይመስላል፡\n\n";
         message += `የተጠቀሙት የቅናሽ አይነት፡ ${discountType}\n\n`;
@@ -292,70 +327,169 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                     )}
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-blue-50/50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
+                        <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
+                            <CardTitle className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                                My Total Orders
+                            </CardTitle>
+                            <TableIcon className="size-4 text-blue-500" />
+                        </CardHeader>
+                        <CardContent className="pb-4 px-4">
+                            <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                                {operatorStats.total.toLocaleString()}
+                            </div>
+                            <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 font-medium">
+                                Lifetime performance
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-emerald-50/50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800">
+                        <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
+                            <CardTitle className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                                My Paid Orders
+                            </CardTitle>
+                            <PlusIcon className="size-4 text-emerald-500" />
+                        </CardHeader>
+                        <CardContent className="pb-4 px-4">
+                            <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
+                                {operatorStats.paid.toLocaleString()}
+                            </div>
+                            <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-medium">
+                                Successfully converted
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+                        <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
+                            <CardTitle className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                                My Pending Orders
+                            </CardTitle>
+                            <MessageSquareIcon className="size-4 text-amber-500" />
+                        </CardHeader>
+                        <CardContent className="pb-4 px-4">
+                            <div className="text-2xl font-bold text-amber-900 dark:text-amber-100">
+                                {operatorStats.pending.toLocaleString()}
+                            </div>
+                            <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 font-medium">
+                                Awaiting payment/action
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-purple-50/50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800">
+                        <CardHeader className="pb-2 pt-4 px-4 flex flex-row items-center justify-between space-y-0">
+                            <CardTitle className="text-xs font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
+                                System Paid Products
+                            </CardTitle>
+                            <FileTextIcon className="size-4 text-purple-500" />
+                        </CardHeader>
+                        <CardContent className="pb-4 px-4">
+                            <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                                {paidProductsCount.toLocaleString()}
+                            </div>
+                            <p className="text-[10px] text-purple-600/80 dark:text-purple-400/80 font-medium">
+                                Total production volume
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+
                 {/* Filters */}
-                <div className="flex flex-wrap gap-2">
-                    <div className="relative flex-1 min-w-[200px]">
-                        <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            type="text"
-                            placeholder="Search by order #, client name, phone..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleFilter()}
-                            className="pl-10"
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Search</span>
+                        <div className="relative">
+                            <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                type="text"
+                                placeholder="Search by order #, name, phone..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleFilter()}
+                                className="pl-10"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Status</span>
+                        <MultiSelect 
+                            options={statusOptions} 
+                            selected={status} 
+                            onChange={setStatus} 
+                            placeholder="All Statuses"
+                            className="w-[200px]"
                         />
                     </div>
-                    <Select value={status} onValueChange={setStatus}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Statuses</SelectItem>
-                            <SelectItem value="Pending">Pending</SelectItem>
-                            <SelectItem value="Paid">Paid</SelectItem>
-                            <SelectItem value="Collected">Collected</SelectItem>
-                            <SelectItem value="Cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Select value={branchId} onValueChange={setBranchId}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Branch" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Collection Branches</SelectItem>
-                            {branches.map((branch) => (
-                                <SelectItem key={branch.id} value={branch.id.toString()}>
-                                    {branch.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select value={collectionDayId} onValueChange={setCollectionDayId}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Collection Day" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Days</SelectItem>
-                            {collectionDays.map((day) => (
-                                <SelectItem key={day.id} value={day.id.toString()}>
-                                    {day.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    {canViewAuditTrail && (
-                        <Select value={latePayment} onValueChange={setLatePayment}>
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Late Payment" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All</SelectItem>
-                                <SelectItem value="1">Yes</SelectItem>
-                                <SelectItem value="0">No</SelectItem>
-                            </SelectContent>
-                        </Select>
+
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Collection Branches</span>
+                        <MultiSelect 
+                            options={branchOptions} 
+                            selected={branchId} 
+                            onChange={setBranchId} 
+                            placeholder="All Branches"
+                            className="w-[200px]"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Days</span>
+                        <MultiSelect 
+                            options={dayOptions} 
+                            selected={collectionDayId} 
+                            onChange={setCollectionDayId} 
+                            placeholder="All Days"
+                            className="w-[180px]"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Holidays</span>
+                        <MultiSelect 
+                            options={holidayOptions} 
+                            selected={holidayId} 
+                            onChange={setHolidayId} 
+                            placeholder="All Holidays"
+                            className="w-[180px]"
+                        />
+                    </div>
+
+                    {canViewAllOrders && operators.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Operators</span>
+                            <MultiSelect 
+                                options={operatorOptions} 
+                                selected={createdBy} 
+                                onChange={setCreatedBy} 
+                                placeholder="All Operators"
+                                className="w-[180px]"
+                            />
+                        </div>
                     )}
-                    <Button onClick={handleFilter}>Filter</Button>
+
+                    {canViewAuditTrail && (
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Late Payment</span>
+                            <Select value={latePayment} onValueChange={setLatePayment}>
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="Late Payment" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="1">Yes</SelectItem>
+                                    <SelectItem value="0">No</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <Button onClick={handleFilter} className="px-6">Filter</Button>
+                    </div>
 
                     {/* Export Dropdown - Show only if user has permission to view all pre-orders */}
                     {canViewAllOrders && (
@@ -371,9 +505,14 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                 <DropdownMenuItem onClick={() => {
                                     const params = new URLSearchParams();
                                     if (search) params.append('search', search);
-                                    if (status !== 'all') params.append('status', status);
-                                    if (branchId !== 'all') params.append('branch_id', branchId);
-                                    if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+                                    
+                                    // Handle array parameters
+                                    status.forEach(v => params.append('status[]', v));
+                                    branchId.forEach(v => params.append('branch_id[]', v));
+                                    collectionDayId.forEach(v => params.append('collection_day_id[]', v));
+                                    holidayId.forEach(v => params.append('holiday_id[]', v));
+                                    createdBy.forEach(v => params.append('created_by[]', v));
+
                                     if (latePayment !== 'all') params.append('late_payment', latePayment);
                                     if (filters?.sort) params.append('sort', filters.sort);
                                     if (filters?.direction) params.append('direction', filters.direction);
@@ -387,9 +526,14 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                 <DropdownMenuItem onClick={() => {
                                     const params = new URLSearchParams();
                                     if (search) params.append('search', search);
-                                    if (status !== 'all') params.append('status', status);
-                                    if (branchId !== 'all') params.append('branch_id', branchId);
-                                    if (collectionDayId !== 'all') params.append('collection_day_id', collectionDayId);
+                                    
+                                    // Handle array parameters
+                                    status.forEach(v => params.append('status[]', v));
+                                    branchId.forEach(v => params.append('branch_id[]', v));
+                                    collectionDayId.forEach(v => params.append('collection_day_id[]', v));
+                                    holidayId.forEach(v => params.append('holiday_id[]', v));
+                                    createdBy.forEach(v => params.append('created_by[]', v));
+
                                     if (latePayment !== 'all') params.append('late_payment', latePayment);
                                     if (filters?.sort) params.append('sort', filters.sort);
                                     if (filters?.direction) params.append('direction', filters.direction);
@@ -525,11 +669,20 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                 </TableHead>
                                 <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
-                                    onClick={() => handleSort('client_name')}
+                                    onClick={() => handleSort('first_name')}
                                 >
                                     <div className="flex items-center">
-                                        Client Name
-                                        <SortIcon field="client_name" />
+                                        First Name
+                                        <SortIcon field="first_name" />
+                                    </div>
+                                </TableHead>
+                                <TableHead
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() => handleSort('last_name')}
+                                >
+                                    <div className="flex items-center">
+                                        Second Name
+                                        <SortIcon field="last_name" />
                                     </div>
                                 </TableHead>
                                 <TableHead
@@ -613,7 +766,8 @@ export default function Index({ preOrders, branches, collectionDays, orderTypes,
                                             </TableCell>
                                         )}
                                         <TableCell className="font-medium">{order.order_number}</TableCell>
-                                        <TableCell>{order.client_name}</TableCell>
+                                        <TableCell>{order.first_name}</TableCell>
+                                        <TableCell>{order.last_name}</TableCell>
                                         <TableCell>{order.phone_number}</TableCell>
                                         <TableCell>{order.order_type?.name}</TableCell>
                                         <TableCell>{order.payment_method || '-'}</TableCell>

@@ -364,7 +364,8 @@ class MyBranchOrdersController extends Controller
             // Header row
             fputcsv($out, [
                 'Order #',
-                'Client Name',
+                'First Name',
+                'Last Name',
                 'Phone Number',
                 'Order Type',
                 'Collection Day',
@@ -383,7 +384,8 @@ class MyBranchOrdersController extends Controller
 
                 fputcsv($out, [
                     $order->order_number,
-                    $order->client_name,
+                    $order->first_name,
+                    $order->last_name,
                     $order->phone_number,
                     $order->orderType->name ?? '-',
                     $order->collectionDay->name ?? '-',

@@ -58,7 +58,8 @@ type OrderItem = {
 
 export default function Edit({ preOrder, branches, collectionDays, orderTypes, products, isRegisteringUser, userPermissions }: Props) {
     const { data, setData, put, processing, errors } = useForm<{
-        client_name: string;
+        first_name: string;
+        last_name: string;
         phone_number: string;
         order_type_id: string;
         collection_day_id: string;
@@ -70,7 +71,8 @@ export default function Edit({ preOrder, branches, collectionDays, orderTypes, p
         payment_method: string;
         items: OrderItem[];
     }>({
-        client_name: preOrder.client_name,
+        first_name: preOrder.first_name,
+        last_name: preOrder.last_name,
         phone_number: preOrder.phone_number.startsWith('+251') 
             ? preOrder.phone_number.substring(4) // Remove +251 prefix
             : preOrder.phone_number,
@@ -237,15 +239,26 @@ export default function Edit({ preOrder, branches, collectionDays, orderTypes, p
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="grid gap-2">
-                                <Label htmlFor="client_name">Client Full Name *</Label>
+                                <Label htmlFor="first_name">First Name *</Label>
                                 <Input
-                                    id="client_name"
-                                    value={data.client_name}
-                                    onChange={(e) => setData('client_name', e.target.value)}
+                                    id="first_name"
+                                    value={data.first_name}
+                                    onChange={(e) => setData('first_name', e.target.value)}
                                     required
-                                    placeholder="Enter client full name"
+                                    placeholder="Enter first name"
                                 />
-                                <InputError message={errors.client_name} />
+                                <InputError message={errors.first_name} />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="last_name">Second Name</Label>
+                                <Input
+                                    id="last_name"
+                                    value={data.last_name}
+                                    onChange={(e) => setData('last_name', e.target.value)}
+                                    placeholder="Enter second name"
+                                />
+                                <InputError message={errors.last_name} />
                             </div>
 
                             <div className="grid gap-2">
@@ -361,26 +374,24 @@ export default function Edit({ preOrder, branches, collectionDays, orderTypes, p
                             {isWalkinCustomer ? (
                                 <div className="grid gap-2">
                                     <Label htmlFor="voucher_code">
-                                        Voucher Code *
+                                        Voucher Code
                                     </Label>
                                     <Input
                                         id="voucher_code"
                                         value={data.voucher_code}
                                         onChange={(e) => setData('voucher_code', e.target.value)}
                                         placeholder="Enter voucher code"
-                                        required
                                     />
                                     <InputError message={errors.voucher_code} />
                                 </div>
                             ) : (
                                 <div className="grid gap-2">
-                                    <Label htmlFor="transaction_reference">Transaction Reference *</Label>
+                                    <Label htmlFor="transaction_reference">Transaction Reference</Label>
                                     <Input
                                         id="transaction_reference"
                                         value={data.transaction_reference}
                                         onChange={(e) => setData('transaction_reference', e.target.value)}
                                         placeholder="Enter transaction reference"
-                                        required
                                     />
                                     <InputError message={errors.transaction_reference} />
                                 </div>
@@ -540,7 +551,7 @@ export default function Edit({ preOrder, branches, collectionDays, orderTypes, p
                 onClose={() => setShowCancelConfirmation(false)}
                 onConfirm={submitForm}
                 title="Confirm Order Cancellation"
-                description={`Are you sure you want to CANCEL order ${preOrder.order_number}? An automatic SMS notification will be sent to ${preOrder.client_name} (${preOrder.phone_number}) informing them of the cancellation.`}
+                description={`Are you sure you want to CANCEL order ${preOrder.order_number}? An automatic SMS notification will be sent to ${preOrder.first_name} ${preOrder.last_name} (${preOrder.phone_number}) informing them of the cancellation.`}
                 confirmText="Yes, Cancel Order & Send SMS"
                 cancelText="Keep Order"
                 variant="destructive"

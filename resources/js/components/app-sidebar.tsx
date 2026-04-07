@@ -175,6 +175,9 @@ const baseSections: NavSection[] = [
       { title: 'Pre-Order Products', href: '/settings/pre-order-products', icon: Package, permission: 'view pre-order products' },
       { title: 'Order Types', href: '/settings/order-types', icon: ListChecks, permission: 'view order types' },
       { title: 'Collection Days', href: '/settings/collection-days', icon: CalendarDays, permission: 'view collection days' },
+      { title: 'SMS Templates', href: '/pre-orders/sms-templates', icon: MessageSquare, permission: 'send bulk sms reminders' },
+      { title: 'Cost Categories', href: '/pre-orders/costs/categories', icon: FolderKey, permission: 'manage pre-order costs' },
+      { title: 'Cost Records', href: '/pre-orders/costs', icon: BarChart3, permission: 'manage pre-order costs' },
     ],
   },
 ];

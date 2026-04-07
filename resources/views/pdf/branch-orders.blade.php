@@ -124,7 +124,7 @@
         <thead>
             <tr>
                 <th style="width: 10%;">Order #</th>
-                <th style="width: 20%;">Client Name</th>
+                <th style="width: 20%;">Name</th>
                 <th style="width: 12%;">Phone</th>
                 <th style="width: 12%;">Order Type</th>
                 <th style="width: 12%;">Collection Day</th>
@@ -141,7 +141,7 @@
                 @endphp
                 <tr>
                     <td>{{ $order->order_number }}</td>
-                    <td>{{ $order->client_name }}</td>
+                    <td>{{ $order->first_name }} {{ $order->last_name }}</td>
                     <td>{{ $order->phone_number }}</td>
                     <td>
                         @if($isShegerGebeta)
