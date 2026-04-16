@@ -24,8 +24,8 @@ use Inertia\Inertia;
 class TicketController extends Controller
 {
     private const PURCHASE_DEPT_ID = 18068;
-    private const PURCHASE_REQUEST_CAT_ID = 22;
-    private const SPARE_PART_PURCHASE_REQUEST_CAT_ID = 23;
+    private const PURCHASE_REQUEST_CAT_ID = 26;
+    private const SPARE_PART_PURCHASE_REQUEST_CAT_ID = 27;
 
     public function __construct(
         private readonly TicketActionService $actionService,
@@ -94,53 +94,52 @@ class TicketController extends Controller
 
     public function create(Request $request)
     {
-        $this->authorize('create', Ticket::class);
+        $parentTicketId = $request->integer('parent_ticket_id');
+
+        if ($parentTicketId) {
+            $parentTicket = Ticket::findOrFail($parentTicketId);
+            // Allow access if the user can view the parent ticket (covers Managers and Assignees)
+            $this->authorize('view', $parentTicket);
+        } else {
+            $this->authorize('create', Ticket::class);
+        }
 
         $isSparePartRequest = $request->boolean('spare_part_request');
         $purchaseRequestCatId = $isSparePartRequest ? self::SPARE_PART_PURCHASE_REQUEST_CAT_ID : self::PURCHASE_REQUEST_CAT_ID;
 
         // Synchronize ChildCategories for Purchase Request category if it exists
         if (TicketMainCategory::where('id', self::PURCHASE_REQUEST_CAT_ID)->exists()) {
-            $childCategories = \App\Models\ChildCategory::all();
+            $childCategories = \App\Models\ChildCategory::where('status', 'Active')->get();
             foreach ($childCategories as $cc) {
-                $sub = TicketSubCategory::firstOrNew([
+                TicketSubCategory::updateOrCreate([
                     'ticket_main_category_id' => self::PURCHASE_REQUEST_CAT_ID,
-                    'name' => $cc->child_name,
+                    'name' => $cc->child_name, // Match by name to satisfy unique constraint
+                ], [
+                    'child_category_id' => $cc->id,
+                    'is_active' => true,
                 ]);
-
-                if (!$sub->exists) {
-                    $sub->is_active = true;
-                }
-
-                $sub->child_category_id = $cc->id;
-                $sub->save();
             }
         }
 
         // Synchronize Spare Part Categories as TicketSubCategories for Spare Part Mode
+        $spareCats = \App\Models\SparePartCategory::all();
         $sparePartSubCategories = [];
-        if ($isSparePartRequest) {
-            $spareCats = \App\Models\SparePartCategory::all();
-            foreach ($spareCats as $sc) {
-                $sub = TicketSubCategory::updateOrCreate([
-                    'ticket_main_category_id' => self::SPARE_PART_PURCHASE_REQUEST_CAT_ID,
-                    'spare_part_category_id' => $sc->id,
-                ], [
-                    'name' => $sc->name,
-                    'is_active' => true,
-                ]);
-                $sparePartSubCategories[] = [
-                    'id' => $sub->id,
-                    'name' => $sub->name,
-                    'spare_part_category_id' => $sc->id,
-                ];
-            }
+        foreach ($spareCats as $sc) {
+            $sub = TicketSubCategory::updateOrCreate([
+                'ticket_main_category_id' => self::SPARE_PART_PURCHASE_REQUEST_CAT_ID,
+                'name' => $sc->name, // Match by name to satisfy unique constraint
+            ], [
+                'spare_part_category_id' => $sc->id,
+                'is_active' => true,
+            ]);
+            $sparePartSubCategories[] = [
+                'id' => $sub->id,
+                'name' => $sub->name,
+                'spare_part_category_id' => $sc->id,
+            ];
         }
 
-        $spareParts = [];
-        if ($isSparePartRequest) {
-            $spareParts = \App\Models\SparePart::with('category:id,name')->orderBy('name')->get(['id', 'name', 'article_code', 'description', 'spare_part_category_id']);
-        }
+        $spareParts = \App\Models\SparePart::with('category:id,name')->orderBy('name')->get(['id', 'name', 'article_code', 'description', 'spare_part_category_id']);
 
         return Inertia::render('tickets/create', [
             'departments' => Department::where('is_active_on_ticketing', true)->orderBy('name')->get(),

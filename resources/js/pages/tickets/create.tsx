@@ -73,6 +73,9 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function TicketCreate({ departments, mainCategories, subCategories, assets, severities, products, purchaseRequestCatId, purchaseDeptId, flash, isSparePartRequest, parentTicketId, sparePartCategories, spareParts }: PageProps) {
+  const PURCHASE_REQUEST_CAT_ID = 26;
+  const SPARE_PART_PURCHASE_REQUEST_CAT_ID = 27;
+
   const { data, setData, post, processing, errors, transform } = useForm({
     department_id: isSparePartRequest ? String(purchaseDeptId) : '',
     ticket_main_category_id: isSparePartRequest ? String(purchaseRequestCatId) : '',
@@ -85,9 +88,26 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
     parent_ticket_id: parentTicketId ? String(parentTicketId) : '',
     is_spare_part_request: isSparePartRequest ?? false,
   });
+
+  const isSparePartMode = useMemo(() =>
+    String(data.ticket_main_category_id) === String(SPARE_PART_PURCHASE_REQUEST_CAT_ID),
+    [data.ticket_main_category_id]
+  );
+
+  const isPurchaseMode = useMemo(() =>
+    String(data.ticket_main_category_id) === String(PURCHASE_REQUEST_CAT_ID),
+    [data.ticket_main_category_id]
+  );
+
+  const isAnyPurchaseMode = isPurchaseMode || isSparePartMode;
+
   const [assetOpen, setAssetOpen] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [productSearch, setProductSearch] = useState('');
+
+  useEffect(() => {
+    setData('is_spare_part_request', isSparePartMode);
+  }, [isSparePartMode]);
 
   useEffect(() => {
     transform((data) => ({
@@ -125,13 +145,18 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
     [subCategories, data.ticket_sub_category_id]
   );
 
-  // In spare part mode, use the pre-synchronized sub-categories from backend
+  // Filter sub-categories based on mode.
+  // For spare parts, use the backend-synced sparePartCategories which carries spare_part_category_id.
+  // For products, keep using filteredSub (which has child_category_id from the DB).
   const effectiveFilteredSub = useMemo(() => {
-    if (isSparePartRequest && sparePartCategories?.length) {
+    if (isSparePartMode && sparePartCategories?.length) {
       return sparePartCategories;
     }
+    if (isPurchaseMode) {
+      return filteredSub.filter(s => !!(s as any).child_category_id);
+    }
     return filteredSub;
-  }, [isSparePartRequest, sparePartCategories, filteredSub]);
+  }, [isSparePartMode, isPurchaseMode, filteredSub, sparePartCategories]);
 
   const selectedEffectiveSub = useMemo(
     () => effectiveFilteredSub.find((s) => String(s.id) === String(data.ticket_sub_category_id)),
@@ -153,18 +178,20 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
     setExpandedCats(newSet);
   };
 
-  // In spare part mode, filter spare parts by their category instead of products
+  // Switch between products and spare parts based on mode.
+  // For spare parts: use sparePartCategories prop directly (has spare_part_category_id from backend sync).
+  // For products: use the raw subCategories array (has child_category_id from DB).
   const filteredProducts = useMemo(
     () => {
-      if (isSparePartRequest && spareParts?.length) {
+      if (isSparePartMode && spareParts?.length) {
         const subCatId = data.ticket_sub_category_id;
-        const subCat = sparePartCategories?.find(s => String(s.id) === String(subCatId));
-        const sparePartCatId = subCat?.spare_part_category_id;
+        // Use sparePartCategories (authoritative source with spare_part_category_id)
+        const sparePartCat = sparePartCategories?.find(s => String(s.id) === String(subCatId));
+        const sparePartCatId = sparePartCat?.spare_part_category_id;
 
         const base = sparePartCatId
           ? spareParts.filter(sp => String(sp.spare_part_category_id) === String(sparePartCatId))
           : [];
-        // Map spare parts to product-like shape for the modal
         const mapped = base.map(sp => ({
           id: sp.id,
           product_name: sp.name,
@@ -175,14 +202,20 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
         const s = productSearch.toLowerCase();
         return mapped.filter(p => p.product_name.toLowerCase().includes(s) || p.product_code.toLowerCase().includes(s));
       }
-      const base = selectedSub?.child_category_id
-        ? products.filter((p) => String(p.child_category_id) === String(selectedSub.child_category_id))
+
+      // For products: look up child_category_id from raw subCategories (all columns from DB)
+      const subCatId = data.ticket_sub_category_id;
+      const subCat = subCategories.find(s => String(s.id) === String(subCatId));
+      const childCategoryId = (subCat as any)?.child_category_id;
+
+      const base = childCategoryId
+        ? products.filter((p) => String(p.child_category_id) === String(childCategoryId))
         : [];
       if (!productSearch) return base;
       const s = productSearch.toLowerCase();
       return base.filter(p => p.product_name.toLowerCase().includes(s) || p.product_code.toLowerCase().includes(s));
     },
-    [isSparePartRequest, spareParts, products, selectedSub, productSearch, data.ticket_sub_category_id]
+    [isSparePartMode, spareParts, sparePartCategories, products, subCategories, productSearch, data.ticket_sub_category_id]
   );
 
   const removeProduct = (productId: string) => {
@@ -352,7 +385,7 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
                 )}
               </div>
 
-              {String(data.ticket_main_category_id) !== String(purchaseRequestCatId) && (
+              {!isAnyPurchaseMode && (
                 <Field label="Description" error={errors.description}>
                   <Textarea
                     rows={4}
@@ -363,7 +396,7 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
               )}
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label={`Severity ${String(data.ticket_main_category_id) === String(purchaseRequestCatId) ? '(optional)' : ''}`} error={errors.severity}>
+                <Field label={`Severity ${isAnyPurchaseMode ? '(optional)' : ''}`} error={errors.severity}>
                   <Select value={data.severity} onValueChange={(v) => setData('severity', v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select severity" />
@@ -383,7 +416,7 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
                 </Field>
               </div>
 
-              {String(data.ticket_main_category_id) === String(purchaseRequestCatId) && (
+              {isAnyPurchaseMode && (
                 <div className="space-y-6">
                   {/* Added Items (Collapsed by Category) */}
                   {Object.keys(groupedAddedProducts).length > 0 && (
@@ -485,7 +518,7 @@ export default function TicketCreate({ departments, mainCategories, subCategorie
                           </div>
                           <div>
                             <h3 className="text-sm font-bold leading-none">
-                              {isSparePartRequest ? 'Select Spare Parts' : 'Select Products'}
+                              {isSparePartMode ? 'Select Spare Parts' : 'Select Products'}
                             </h3>
                             <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                               <Package className="h-3 w-3" />

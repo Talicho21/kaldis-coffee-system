@@ -10,7 +10,25 @@ class TicketStoreRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('ticket.create') ?? false;
+        $user = $this->user();
+        if (!$user)
+            return false;
+
+        // Allow if user has global create permission
+        if ($user->can('ticket.create')) {
+            return true;
+        }
+
+        // Allow if it's a spare part request for a ticket the user can view (Manager/Assignee)
+        $parentTicketId = $this->input('parent_ticket_id');
+        if ($parentTicketId) {
+            $parentTicket = \App\Models\Ticket::find($parentTicketId);
+            if ($parentTicket && $user->can('view', $parentTicket)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function rules(): array

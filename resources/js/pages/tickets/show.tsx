@@ -123,7 +123,7 @@ type PageProps = {
   staffOptions: { id: number; name: string; email: string }[];
   priorityOptions: string[];
   assetOptions: AssetOption[];
-  abilities: { canAssign: boolean; canUpdateStatus: boolean; canRate: boolean; hasRated: boolean; isRequestor: boolean; canApproveReject: boolean; canDelete: boolean; canUpdateAsset: boolean; canUpdateDeadline: boolean; canUpdatePriority: boolean; hasManagerPower: boolean };
+  abilities: { canAssign: boolean; canUpdateStatus: boolean; canRate: boolean; hasRated: boolean; isRequestor: boolean; canApproveReject: boolean; canDelete: boolean; canUpdateAsset: boolean; canUpdateDeadline: boolean; canUpdatePriority: boolean; hasManagerPower: boolean; canRequestSparePart: boolean };
   flash: { message: string | null; just_created?: boolean | null };
 };
 
@@ -618,7 +618,7 @@ export default function TicketShow() {
                   </Card>
                 )}
 
-                {ticket.status === 'hold' && (ticket.mainCategory?.name ?? ticket.main_category?.name ?? '').toLowerCase().includes('repair') && (abilities.canUpdateStatus || abilities.hasManagerPower) && (
+                {abilities.canRequestSparePart && (
                   <Card className="border-orange-200 shadow-sm overflow-hidden bg-orange-50/30">
                     <CardHeader className="p-4 pb-2">
                       <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-700">

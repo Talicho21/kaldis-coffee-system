@@ -140,6 +140,7 @@ class Ticket extends Model
             'canUpdateAsset' => $user->can('updateAsset', $this),
             'canUpdateDeadline' => $user->can('updateDeadline', $this),
             'canUpdatePriority' => $user->can('updatePriority', $this),
+            'canRequestSparePart' => $this->status === TicketStatus::Hold && ($isAssignee || $hasManagerPower),
         ];
     }
 }

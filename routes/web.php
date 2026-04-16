@@ -250,14 +250,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('pre-orders/bulk-cancel', [\App\Http\Controllers\PreOrderController::class, 'bulkCancel'])->name('pre-orders.bulk-cancel')->middleware('permission:cancel pre-orders');
         Route::get('pre-orders/sms-templates', [\App\Http\Controllers\SmsTemplateController::class, 'index'])->name('pre-orders.sms-templates.index');
         Route::put('pre-orders/sms-templates/{smsTemplate}', [\App\Http\Controllers\SmsTemplateController::class, 'update'])->name('pre-orders.sms-templates.update');
-        
+
         // Cost Management
         Route::middleware('permission:manage pre-order costs')->prefix('pre-orders/costs')->group(function () {
             Route::get('categories', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'index'])->name('pre-order-costs.categories.index');
             Route::post('categories', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'store'])->name('pre-order-costs.categories.store');
             Route::put('categories/{preOrderCostCategory}', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'update'])->name('pre-order-costs.categories.update');
             Route::delete('categories/{preOrderCostCategory}/delete', [\App\Http\Controllers\PreOrderCostCategoryController::class, 'destroy'])->name('pre-order-costs.categories.destroy');
-            
+
             Route::get('/', [\App\Http\Controllers\PreOrderCostController::class, 'index'])->name('pre-order-costs.index');
             Route::post('/', [\App\Http\Controllers\PreOrderCostController::class, 'store'])->name('pre-order-costs.store');
             Route::put('{preOrderCost}', [\App\Http\Controllers\PreOrderCostController::class, 'update'])->name('pre-order-costs.update');
@@ -294,11 +294,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('tickets.index')
         ->middleware('permission:ticket.view.all|ticket.view.department|ticket.view.own');
     Route::get('tickets/create', [\App\Http\Controllers\TicketController::class, 'create'])
-        ->name('tickets.create')
-        ->middleware('permission:ticket.create');
+        ->name('tickets.create');
     Route::post('tickets', [\App\Http\Controllers\TicketController::class, 'store'])
-        ->name('tickets.store')
-        ->middleware('permission:ticket.create');
+        ->name('tickets.store');
     Route::get('tickets/{ticket}', [\App\Http\Controllers\TicketController::class, 'show'])
         ->name('tickets.show')
         ->middleware('permission:ticket.view.all|ticket.view.department|ticket.view.own');
