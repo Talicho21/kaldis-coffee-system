@@ -232,6 +232,7 @@ class TicketActionService
             ->join('managers', 'employees.id', '=', 'managers.employee_id')
             ->where('employees.department_id', $departmentId)
             ->pluck('users.id')
+            ->map(fn($id) => (int) $id)
             ->all();
     }
 

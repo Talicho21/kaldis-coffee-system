@@ -118,29 +118,34 @@ class Ticket extends Model
     public function getAbilities(User $user): array
     {
         $currentAssignment = $this->assignments()->where('is_current', true)->first();
-        $isAssignee = $currentAssignment && $currentAssignment->assigned_to === $user->id;
+        // Use non-strict comparison for IDs to handle potential string/int mismatches in production
+        $isAssignee = $currentAssignment && (string) $currentAssignment->assigned_to === (string) $user->id;
 
         $managerUserIds = app(\App\Services\TicketActionService::class)->departmentManagerUserIds($this->department_id);
-        $hasManagerPower = in_array($user->id, $managerUserIds) || $user->hasRole('Ticket Super Admin');
+        $hasManagerPower = in_array((int) $user->id, $managerUserIds) || $user->hasRole('Ticket Super Admin');
+
+        $isClosedOrRejected = in_array($this->status, [TicketStatus::Rejected, TicketStatus::Closed]);
+        $isPendingOrDone = in_array($this->status, [TicketStatus::PendingApproval, TicketStatus::Done]);
 
         return [
             'canAssign' => ($hasManagerPower || $user->can('ticket.assign'))
-                && !in_array($this->status, [TicketStatus::PendingApproval, TicketStatus::Rejected, TicketStatus::Closed]),
-            'canUpdateStatus' => $isAssignee
-                && !in_array($this->status, [TicketStatus::PendingApproval, TicketStatus::Rejected, TicketStatus::Closed, TicketStatus::Done]),
-            'canApproveReject' => ($hasManagerPower && ($this->status === TicketStatus::PendingApproval || $this->status === TicketStatus::Done))
-                || ($this->status === TicketStatus::Done && $this->user_id === $user->id),
+                && !$isClosedOrRejected && $this->status !== TicketStatus::PendingApproval,
+            'canUpdateStatus' => ($isAssignee || $hasManagerPower)
+                && !$isClosedOrRejected && !$isPendingOrDone,
+            'canApproveReject' => ($hasManagerPower && $isPendingOrDone)
+                || ($this->status === TicketStatus::Done && (int) $this->user_id === (int) $user->id),
             'canRate' => $this->status === TicketStatus::Closed
-                && $this->user_id === $user->id
+                && (int) $this->user_id === (int) $user->id
                 && $this->ratings()->where('user_id', $user->id)->doesntExist(),
-            'hasRated' => $this->user_id === $user->id
+            'hasRated' => (int) $this->user_id === (int) $user->id
                 && $this->ratings()->where('user_id', $user->id)->exists(),
-            'isRequestor' => $this->user_id === $user->id,
+            'isRequestor' => (int) $this->user_id === (int) $user->id,
             'canDelete' => $user->can('ticket.delete'),
             'canUpdateAsset' => $user->can('updateAsset', $this),
             'canUpdateDeadline' => $user->can('updateDeadline', $this),
             'canUpdatePriority' => $user->can('updatePriority', $this),
-            'canRequestSparePart' => $this->status === TicketStatus::Hold && ($isAssignee || $hasManagerPower),
+            'canRequestSparePart' => (string) $this->department_id === '13706' && $this->status === TicketStatus::Hold && ($isAssignee || $hasManagerPower),
+            'hasManagerPower' => $hasManagerPower,
         ];
     }
 }

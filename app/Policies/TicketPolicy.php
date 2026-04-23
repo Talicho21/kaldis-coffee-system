@@ -20,7 +20,7 @@ class TicketPolicy
         }
 
         // 3. Requestor can view their own tickets
-        if ($ticket->user_id === $user->id) {
+        if ((int) $ticket->user_id === (int) $user->id) {
             return true;
         }
 
@@ -36,18 +36,27 @@ class TicketPolicy
     public function updateStatus(User $user, Ticket $ticket): bool
     {
         // 1. Current assignee can update status
+        // Using (string) comparison for safety if needed, but Eloquent's where usually handles it.
+        // However, we want to match the broadening in getAbilities.
         if ($ticket->assignments()->where('is_current', true)->where('assigned_to', $user->id)->exists()) {
             return true;
         }
 
-        // 2. Requestor can only update status if it's 'done'
-        return $ticket->user_id === $user->id && $ticket->status?->value === 'done';
+        // 2. Department Managers or Super Admins
+        if ($this->isDepartmentManager($user, $ticket->department_id) || $user->hasRole('Ticket Super Admin')) {
+            return true;
+        }
+
+        // 3. Requestor can only update status if it's 'done' (to approve it indirectly, though we have specific methods for that)
+        return (string) $ticket->user_id === (string) $user->id && $ticket->status?->value === 'done';
     }
 
     public function assign(User $user, Ticket $ticket): bool
     {
-        // Only managers of the ticket's department or users with ticket.assign permission can assign
-        return $this->isDepartmentManager($user, $ticket->department_id) || $user->can('ticket.assign');
+        // Only managers of the ticket's department or users with ticket.assign permission or Super Admins can assign
+        return $this->isDepartmentManager($user, $ticket->department_id)
+            || $user->can('ticket.assign')
+            || $user->hasRole('Ticket Super Admin');
     }
 
     public function approveCompletion(User $user, Ticket $ticket): bool
@@ -58,7 +67,7 @@ class TicketPolicy
         }
 
         // The original requestor can approve Done tickets (closing them)
-        return $ticket->user_id === $user->id && $ticket->status?->value === 'done';
+        return (int) $ticket->user_id === (int) $user->id && $ticket->status?->value === 'done';
     }
 
     public function rejectCompletion(User $user, Ticket $ticket): bool
@@ -69,7 +78,7 @@ class TicketPolicy
         }
 
         // The original requestor can reject Done tickets (sending back to in_progress)
-        return $ticket->user_id === $user->id && $ticket->status?->value === 'done';
+        return (int) $ticket->user_id === (int) $user->id && $ticket->status?->value === 'done';
     }
 
     private function isDepartmentManager(User $user, int $departmentId): bool
@@ -102,7 +111,7 @@ class TicketPolicy
 
     public function rate(User $user, Ticket $ticket): bool
     {
-        return $ticket->status?->value === 'closed' && $ticket->user_id === $user->id;
+        return $ticket->status?->value === 'closed' && (int) $ticket->user_id === (int) $user->id;
     }
 
     public function delete(User $user, Ticket $ticket): bool
