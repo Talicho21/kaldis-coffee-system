@@ -43,12 +43,14 @@ class PreOrderController extends Controller
             $query->where('created_by', auth()->id());
         }
 
-        // Filter by active holidays only
-        $query->where(function ($q) {
-            $q->whereHas('holiday', function ($hq) {
-                $hq->where('status', 'Active');
-            })->orWhereNull('holiday_id');
-        });
+        // Filter by active holidays only (skip for users who can view all holidays)
+        if (!auth()->user()->can('view all holidays')) {
+            $query->where(function ($q) {
+                $q->whereHas('holiday', function ($hq) {
+                    $hq->where('status', 'Active');
+                })->orWhereNull('holiday_id');
+            });
+        }
 
         if ($search = $request->query('search')) {
             $normalizedPhone = $this->normalizeSearchPhone($search);
