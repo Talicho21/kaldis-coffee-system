@@ -559,17 +559,19 @@ export default function Index({ preOrders, branches, collectionDays, holidays, o
                         />
                     </div>
 
-                    <div className="flex flex-col gap-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Holidays</span>
-                        <MultiSelect
-                            options={holidayOptions}
-                            selected={holidayId}
-                            onChange={setHolidayId}
-                            placeholder="All Holidays"
-                            className="w-[180px]"
-                            showSelectedLabels={false}
-                        />
-                    </div>
+                    {canViewAllHolidays && (
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-1">Holidays</span>
+                            <MultiSelect
+                                options={holidayOptions}
+                                selected={holidayId}
+                                onChange={setHolidayId}
+                                placeholder="All Holidays"
+                                className="w-[180px]"
+                                showSelectedLabels={false}
+                            />
+                        </div>
+                    )}
 
                     {canViewAllOrders && operators.length > 0 && (
                         <div className="flex flex-col gap-1.5">
