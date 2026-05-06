@@ -806,11 +806,11 @@ export default function Index({ preOrders, branches, collectionDays, holidays, o
                                 </TableHead>
                                 <TableHead
                                     className="cursor-pointer hover:bg-muted/50"
-                                    onClick={() => handleSort('client_name')}
+                                    onClick={() => handleSort('first_name')}
                                 >
                                     <div className="flex items-center">
                                         Client Name
-                                        <SortIcon field="client_name" />
+                                        <SortIcon field="first_name" />
                                     </div>
                                 </TableHead>
                                 <TableHead
@@ -895,7 +895,7 @@ export default function Index({ preOrders, branches, collectionDays, holidays, o
                                             </TableCell>
                                         )}
                                         <TableCell className="font-medium">{order.order_number}</TableCell>
-                                        <TableCell>{order.client_name}</TableCell>
+                                        <TableCell>{`${order.first_name || ''} ${order.father_name || ''} ${order.surname || ''}`.trim()}</TableCell>
                                         <TableCell>{order.phone_number}</TableCell>
                                         <TableCell>{order.order_type?.name}</TableCell>
                                         <TableCell>{order.payment_method || '-'}</TableCell>

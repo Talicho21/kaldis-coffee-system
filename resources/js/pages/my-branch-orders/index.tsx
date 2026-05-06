@@ -382,10 +382,10 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 											<SortIcon field="order_number" />
 										</div>
 									</TableHead>
-									<TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('client_name')}>
+									<TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('first_name')}>
 										<div className="flex items-center">
 											Client Name
-											<SortIcon field="client_name" />
+											<SortIcon field="first_name" />
 										</div>
 									</TableHead>
 									<TableHead>Phone</TableHead>
@@ -415,7 +415,9 @@ export default function Index({ orders, collectionDays, orderTypes, kpis, produc
 										return (
 											<TableRow key={order.id} className={isCollected ? 'opacity-60' : ''}>
 												<TableCell className={isCollected ? 'line-through' : ''}>{order.order_number}</TableCell>
-												<TableCell className={isCollected ? 'line-through' : ''}>{order.client_name}</TableCell>
+												<TableCell className={isCollected ? 'line-through' : ''}>
+													{`${order.first_name || ''} ${order.father_name || ''} ${order.surname || ''}`.trim()}
+												</TableCell>
 												<TableCell className={isCollected ? 'line-through' : ''}>{order.phone_number}</TableCell>
 
 												<TableCell className={isCollected ? 'line-through' : ''}>
