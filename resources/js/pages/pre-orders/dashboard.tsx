@@ -14,6 +14,7 @@ import BreakEvenTrendCharts from '@/components/dashboard/BreakEvenTrendCharts';
 import DashboardFilters from '@/components/dashboard/DashboardFilters';
 import MatrixTable from '@/components/dashboard/MatrixTable';
 import OperatorPerformance from '@/components/dashboard/OperatorPerformance';
+import TargetKpiCard, { type TargetKpiEntry } from '@/components/dashboard/TargetKpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -140,6 +141,8 @@ type Props = {
 		permissions: string[];
 		roles: string[];
 	};
+	targetKpi: TargetKpiEntry[];
+	selectedHolidayName?: string;
 };
 
 
@@ -148,8 +151,8 @@ type Props = {
 import { router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
-export default function DashboardPage({ dashboard, filters, options, auth }: Props) {
-    const [activeTab, setActiveTab] = useState('overview');
+export default function DashboardPage({ dashboard, filters, options, auth, targetKpi, selectedHolidayName }: Props) {
+	const [activeTab, setActiveTab] = useState('overview');
 
 	useEffect(() => {
 		if (window.Echo) {
@@ -169,7 +172,7 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 
 		// CSV Headers
 		const headers = ['Collection Branch', 'Collection Day', 'Product', 'Quantity', 'Total Amount', 'Total Orders'];
-		
+
 		const csvContent = [
 			headers.join(','),
 			...dashboard.summaryData.items.map(item => [
@@ -242,7 +245,7 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 								<span>Operations</span>
 							</TabsTrigger>
 						</TabsList>
-						
+
 						<div className="flex items-center gap-2">
 							<div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100">
 								<div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
@@ -253,15 +256,20 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 
 					{/* Filters */}
 					<div className="py-2">
-						<DashboardFilters 
-							filters={filters} 
-							options={options} 
+						<DashboardFilters
+							filters={filters}
+							options={options}
 							onExportCsv={handleExportCsv}
-                                disableAllHolidays={activeTab === 'break-even'}
+							disableAllHolidays={activeTab === 'break-even'}
 						/>
 					</div>
 
 					<TabsContent value="overview" className="space-y-6 animate-in fade-in duration-500">
+						{/* Target KPI Progress Bars */}
+						{targetKpi && targetKpi.length > 0 && (
+							<TargetKpiCard data={targetKpi} holidayName={selectedHolidayName} />
+						)}
+
 						{/* Summary Cards */}
 						<SummaryCards stats={dashboard.summary} />
 
@@ -275,24 +283,24 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 					<TabsContent value="planning" className="space-y-6 animate-in fade-in duration-500">
 						{/* Matrix Tables */}
 						<div className="grid grid-cols-1 gap-8">
-							<MatrixTable 
+							<MatrixTable
 								title="Product vs Collection Day Matrix (Confirmed Sales)"
 								description="Cross-tabulation of products and collection days for production planning."
-								data={dashboard.matrix} 
+								data={dashboard.matrix}
 								firstColumnLabel="Product"
 							/>
-							<MatrixTable 
+							<MatrixTable
 								title="Product Sales by Each Branch"
 								description="Distribution of product demand across collection branches."
-								data={dashboard.branchMatrix} 
+								data={dashboard.branchMatrix}
 								firstColumnLabel="Branch"
 							/>
 						</div>
 					</TabsContent>
 
 					<TabsContent value="analytics" className="space-y-6 animate-in fade-in duration-500">
-						<DashboardCharts 
-							data={dashboard.charts} 
+						<DashboardCharts
+							data={dashboard.charts}
 							funnelData={dashboard.funnel}
 							orderingTimeData={dashboard.orderingTime}
 							productTrend={dashboard.productTrend}
@@ -304,25 +312,25 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 							<>
 								{/* Quick Stats Cards */}
 								<BreakEvenQuickStats summary={dashboard.breakEvenAnalysis.summary} />
-								
+
 								{/* Break-Even Summary Cards */}
 								<BreakEvenSummary summary={dashboard.breakEvenAnalysis.summary} />
-								
+
 								{/* Historical Performance Trends */}
-								<BreakEvenTrendCharts 
-                                    data={dashboard.breakEvenAnalysis.historicalTrends} 
-                                    fixedCosts={dashboard.breakEvenAnalysis.summary.fixedCosts}
-                                    breakEvenOrders={dashboard.breakEvenAnalysis.summary.breakEvenOrders}
-                                />
+								<BreakEvenTrendCharts
+									data={dashboard.breakEvenAnalysis.historicalTrends}
+									fixedCosts={dashboard.breakEvenAnalysis.summary.fixedCosts}
+									breakEvenOrders={dashboard.breakEvenAnalysis.summary.breakEvenOrders}
+								/>
 
 								{/* Break-Even Projection Chart */}
-								<BreakEvenChart 
+								<BreakEvenChart
 									data={dashboard.breakEvenAnalysis.chartData}
 									breakEvenPoint={dashboard.breakEvenAnalysis.breakEven?.ordersNeeded}
 									currentOrders={dashboard.breakEvenAnalysis.summary.currentOrders}
 									isProfitable={dashboard.breakEvenAnalysis.summary.isProfitable}
 								/>
-								
+
 								{/* Additional Insights */}
 								<Card>
 									<CardHeader>
@@ -332,7 +340,7 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 											<div className="text-center p-4 bg-blue-50 rounded-lg">
 												<div className="text-2xl font-bold text-blue-600">
-													{dashboard.breakEvenAnalysis?.breakEven?.contributionMargin ? 
+													{dashboard.breakEvenAnalysis?.breakEven?.contributionMargin ?
 														((dashboard.breakEvenAnalysis.breakEven.contributionMargin / dashboard.breakEvenAnalysis.summary.avgRevenuePerOrder) * 100).toFixed(1) : '0'
 													}%
 												</div>
@@ -370,13 +378,13 @@ export default function DashboardPage({ dashboard, filters, options, auth }: Pro
 					<TabsContent value="operations" className="space-y-6 animate-in fade-in duration-500">
 						<div className="grid grid-cols-1 gap-6">
 							<OperatorPerformance data={dashboard.operatorPerformance} />
-							
+
 							<div className="space-y-2">
 								<div className="flex items-center justify-between">
 									<h2 className="text-xl font-semibold">Detailed Orders Ledger</h2>
 								</div>
-								<SummaryTable 
-									data={dashboard.summaryData.items} 
+								<SummaryTable
+									data={dashboard.summaryData.items}
 									totalOrders={dashboard.summaryData.totalUniqueOrders}
 								/>
 

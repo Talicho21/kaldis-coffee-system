@@ -34,6 +34,7 @@ use App\Http\Controllers\{
     ExternalLinkSectionController,
     SparePartCategoryController,
     SparePartController,
+    PreOrderTargetController,
 };
 
 Route::get('/', fn() => Inertia::render('welcome'))->name('home');
@@ -363,6 +364,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Spare Part Management
     Route::resource('spare-part-categories', SparePartCategoryController::class)->except(['show']);
     Route::resource('spare-parts', SparePartController::class)->except(['show']);
+
+    // Pre-Order Targets
+    Route::resource('pre-order-targets', PreOrderTargetController::class)->except(['show', 'create', 'edit']);
 });
 
 require __DIR__ . '/settings.php';

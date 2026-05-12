@@ -8,6 +8,7 @@ use App\Models\OrderType;
 use App\Models\PreOrder;
 use App\Models\PreOrderItem;
 use App\Models\PreOrderProduct;
+use App\Models\PreOrderTarget;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,8 @@ class PreOrderDashboardController extends Controller
         $statuses = $statusQuery->select('status')->distinct()->pluck('status');
 
 
+        $selectedHoliday = $holidays->firstWhere('id', $filters['holiday_id']);
+
         return Inertia::render('pre-orders/dashboard', [
             'dashboard' => $dashboardData,
             'filters' => $filters,
@@ -95,6 +98,8 @@ class PreOrderDashboardController extends Controller
                 'statuses' => $statuses,
                 'holidays' => $holidays,
             ],
+            'targetKpi' => $this->getTargetKpiData($filters),
+            'selectedHolidayName' => $selectedHoliday?->name,
         ]);
 
 
@@ -975,6 +980,55 @@ class PreOrderDashboardController extends Controller
                 ];
             })
             ->toArray();
+    }
+
+    /**
+     * Get target KPI data for progress bars (paid orders vs. target per order type)
+     */
+    private function getTargetKpiData(array $filters): array
+    {
+        $holidayId = $filters['holiday_id'] ?? null;
+        if (!$holidayId || $holidayId === 'all') {
+            return [];
+        }
+
+        $targets = PreOrderTarget::with('orderType:id,name')
+            ->where('holiday_id', $holidayId)
+            ->get();
+
+        if ($targets->isEmpty()) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($targets as $target) {
+            // Count paid/collected orders for this holiday (+ optional order type filter)
+            $q = PreOrder::where('holiday_id', $holidayId)
+                ->whereIn('status', ['Paid', 'Collected']);
+
+            if ($target->order_type_id) {
+                $q->where('order_type_id', $target->order_type_id);
+            }
+
+            $paidCount = $q->count();
+            $pct = $target->target_count > 0
+                ? round(($paidCount / $target->target_count) * 100, 1)
+                : 0;
+
+            $result[] = [
+                'order_type_id' => $target->order_type_id,
+                'order_type_name' => $target->orderType?->name ?? 'All Order Types',
+                'target' => $target->target_count,
+                'paid_count' => $paidCount,
+                'percentage' => $pct,
+            ];
+        }
+
+        // Sort: specific order types first, then "All" entries
+        usort($result, fn($a, $b) => ($b['order_type_id'] !== null) <=> ($a['order_type_id'] !== null));
+
+        return $result;
     }
 }
 
