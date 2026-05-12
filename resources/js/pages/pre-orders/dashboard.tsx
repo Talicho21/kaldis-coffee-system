@@ -29,6 +29,7 @@ type Props = {
 		summary: {
 			total_leads: number;
 			total_orders: number;
+			paid_products: number;
 			total_revenue: number;
 			conversion_rate: number;
 			cancellation_rate: number;
