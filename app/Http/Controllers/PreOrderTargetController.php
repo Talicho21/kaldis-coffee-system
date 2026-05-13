@@ -14,6 +14,8 @@ class PreOrderTargetController extends Controller
 {
     public function index(): Response
     {
+        abort_unless(auth()->user()->can('manage pre-order targets'), 403);
+
         $targets = PreOrderTarget::with(['holiday:id,name', 'orderType:id,name'])
             ->orderByDesc('created_at')
             ->get()
@@ -37,6 +39,7 @@ class PreOrderTargetController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        abort_unless(auth()->user()->can('manage pre-order targets'), 403);
         $validated = $request->validate([
             'holiday_id' => ['required', 'exists:holidays,id'],
             'order_type_id' => ['nullable', 'exists:order_types,id'],
@@ -60,6 +63,7 @@ class PreOrderTargetController extends Controller
 
     public function update(Request $request, PreOrderTarget $preOrderTarget): RedirectResponse
     {
+        abort_unless(auth()->user()->can('manage pre-order targets'), 403);
         $validated = $request->validate([
             'target_count' => ['required', 'integer', 'min:1'],
         ]);
@@ -71,6 +75,7 @@ class PreOrderTargetController extends Controller
 
     public function destroy(PreOrderTarget $preOrderTarget): RedirectResponse
     {
+        abort_unless(auth()->user()->can('manage pre-order targets'), 403);
         $preOrderTarget->delete();
 
         return back()->with('success', 'Target deleted.');
