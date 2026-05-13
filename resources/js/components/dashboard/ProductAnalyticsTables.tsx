@@ -132,7 +132,7 @@ function ProductByChannelTable({ data }: { data: ProductByChannelData }) {
         <Card className="w-full">
             <CardHeader>
                 <CardTitle>Product Sales by Channel</CardTitle>
-                <CardDescription>TR Order · Telegram Bot · Walk-in · Other — quantity and revenue per channel</CardDescription>
+                <CardDescription>Operator Orders · Telegram Bot · Walk-in — quantity and revenue per channel</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="rounded-md border overflow-x-auto">
