@@ -36,12 +36,12 @@ export default function MatrixTable({ title, description, data, firstColumnLabel
                     <Table>
                         <TableHeader className="bg-muted/50">
                             <TableRow>
-                                <TableHead className="font-bold sticky left-0 bg-muted z-10 w-[250px]">
+                                <TableHead className="font-bold sticky left-0 bg-muted z-10 w-auto min-w-[150px]">
                                     {firstColumnLabel}
                                 </TableHead>
 
                                 {data.columns.map((col) => (
-                                    <TableHead key={col} className="text-center font-bold px-4 py-3 min-w-[120px]">
+                                    <TableHead key={col} className="text-center font-bold px-2 py-3 whitespace-normal break-words leading-tight">
                                         {col}
                                     </TableHead>
                                 ))}
@@ -52,7 +52,7 @@ export default function MatrixTable({ title, description, data, firstColumnLabel
                             {data.rows.map((row, index) => {
                                 // Calculate row total if not provided
                                 const rowTotal = row.total ?? data.columns.reduce((sum, col) => sum + (row[col] || 0), 0);
-                                
+
                                 return (
                                     <TableRow key={index} className="hover:bg-muted/30 transition-colors">
                                         <TableCell className="font-medium sticky left-0 bg-background border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
