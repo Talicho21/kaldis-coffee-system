@@ -291,14 +291,6 @@ export default function TicketShow() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            {abilities.hasManagerPower && ticket.product_requests && ticket.product_requests.length > 0 && (
-              <Button asChild variant="outline" size="sm" className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10">
-                <a href={route('tickets.download-products', ticket.id)}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export PDF
-                </a>
-              </Button>
-            )}
             <Button asChild variant="outline" size="sm" className="hidden sm:flex">
               <Link href={route('tickets.index')}>
                 <ArrowLeft className="mr-2 h-4 w-4" />

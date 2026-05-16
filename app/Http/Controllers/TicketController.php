@@ -302,7 +302,7 @@ class TicketController extends Controller
 
     public function downloadProductsPdf(Ticket $ticket)
     {
-        $ticket->load(['productRequests.product.childCategory', 'productRequests.sparePart.category', 'department', 'subCategory', 'mainCategory', 'requestorBranch']);
+        $ticket->load(['productRequests.product.childCategory', 'productRequests.sparePart.category', 'department', 'subCategory', 'mainCategory', 'requestorBranch', 'beneficiaryBranch', 'beneficiaryDepartment']);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.requested-products', compact('ticket'));
 

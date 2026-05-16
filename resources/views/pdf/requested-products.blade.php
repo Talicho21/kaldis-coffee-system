@@ -96,19 +96,36 @@
     <div class="ticket-info">
         <table>
             <tr>
-                <td class="label">Requestor Branch:</td>
-                <td>{{ $ticket->requestorBranch?->name ?? 'N/A' }}</td>
+                <td class="label">Requestor:</td>
+                <td>{{ $ticket->requestor_full_name }}</td>
                 <td class="label">Date:</td>
                 <td>{{ $ticket->created_at->format('M d, Y H:i') }}</td>
             </tr>
-            <tr>
-                <td class="label">Requestor:</td>
-                <td>{{ $ticket->requestor_full_name }}</td>
-                @if($ticket->ticket_main_category_id != 22)
-                    <td class="label">Main Category:</td>
-                    <td>{{ $ticket->mainCategory?->name ?? $ticket->main_category?->name ?? 'N/A' }}</td>
-                @endif
-            </tr>
+            @if($ticket->beneficiaryBranch)
+                <tr>
+                    <td class="label" style="color:#1d4ed8;font-weight:800;">Requested For Branch:</td>
+                    <td style="color:#1d4ed8;font-weight:700;">{{ $ticket->beneficiaryBranch->name }}</td>
+                    @if($ticket->beneficiaryDepartment)
+                        <td class="label">Requested For Dept:</td>
+                        <td>{{ $ticket->beneficiaryDepartment->name }}</td>
+                    @else
+                        <td></td>
+                        <td></td>
+                    @endif
+                </tr>
+            @else
+                <tr>
+                    <td class="label">Requestor Branch:</td>
+                    <td>{{ $ticket->requestorBranch?->name ?? 'N/A' }}</td>
+                    @if($ticket->ticket_main_category_id != 22)
+                        <td class="label">Main Category:</td>
+                        <td>{{ $ticket->mainCategory?->name ?? $ticket->main_category?->name ?? 'N/A' }}</td>
+                    @else
+                        <td></td>
+                        <td></td>
+                    @endif
+                </tr>
+            @endif
         </table>
     </div>
 
