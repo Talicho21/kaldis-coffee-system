@@ -54,7 +54,7 @@ export default function Create({ fiscalYears, fiscalMonths }: Props) {
 
     // Filter fiscal months based on selected fiscal year
     const filteredFiscalMonths = selectedFiscalYear
-        ? fiscalMonths.filter(month => month.fiscal_year_id === parseInt(selectedFiscalYear))
+        ? fiscalMonths.filter(month => Number(month.fiscal_year_id) === Number(selectedFiscalYear))
         : fiscalMonths;
 
     const breadcrumbs: BreadcrumbItem[] = [
