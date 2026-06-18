@@ -65,10 +65,25 @@ class EvaluationController extends Controller
             ->orderBy('name')
             ->get();
 
+        $categories = EvaluationCategory::where('is_active', true)->select('id', 'name')->get();
+        $existingNames = Evaluation::distinct()->pluck('name')->toArray();
+
+        $allCategories = $categories->toArray();
+        $existingCategoryNames = $categories->pluck('name')->toArray();
+
+        foreach ($existingNames as $index => $name) {
+            if (!in_array($name, $existingCategoryNames)) {
+                $allCategories[] = [
+                    'id' => -1 - $index, // Temporary fake ID
+                    'name' => $name
+                ];
+            }
+        }
+
         return Inertia::render('Evaluations/Create', [
             'evaluatorGroups' => $evaluatorGroups,
             'evaluatesGroups' => $evaluatesGroups,
-            'evaluationCategories' => EvaluationCategory::where('is_active', true)->select('id', 'name')->get(),
+            'evaluationCategories' => $allCategories,
         ]);
     }
 
@@ -79,6 +94,12 @@ class EvaluationController extends Controller
             'evaluator_group_id' => 'required|exists:evaluator_groups,id',
             'evaluates_group_id' => 'required|exists:evaluates_groups,id',
         ]);
+
+        // Ensure the evaluation name exists in evaluation_categories
+        EvaluationCategory::firstOrCreate(
+            ['name' => $validated['name']],
+            ['weight' => 1, 'is_active' => true]
+        );
 
         Evaluation::create($validated);
 
@@ -97,11 +118,26 @@ class EvaluationController extends Controller
             ->orderBy('name')
             ->get();
 
+        $categories = EvaluationCategory::where('is_active', true)->select('id', 'name')->get();
+        $existingNames = Evaluation::distinct()->pluck('name')->toArray();
+
+        $allCategories = $categories->toArray();
+        $existingCategoryNames = $categories->pluck('name')->toArray();
+
+        foreach ($existingNames as $index => $name) {
+            if (!in_array($name, $existingCategoryNames)) {
+                $allCategories[] = [
+                    'id' => -1 - $index, // Temporary fake ID
+                    'name' => $name
+                ];
+            }
+        }
+
         return Inertia::render('Evaluations/Edit', [
             'evaluation' => $evaluation->load(['evaluatorGroup', 'evaluatesGroup']),
             'evaluatorGroups' => $evaluatorGroups,
             'evaluatesGroups' => $evaluatesGroups,
-            'evaluationCategories' => EvaluationCategory::where('is_active', true)->select('id', 'name')->get(),
+            'evaluationCategories' => $allCategories,
         ]);
     }
 
@@ -112,6 +148,12 @@ class EvaluationController extends Controller
             'evaluator_group_id' => 'required|exists:evaluator_groups,id',
             'evaluates_group_id' => 'required|exists:evaluates_groups,id',
         ]);
+
+        // Ensure the evaluation name exists in evaluation_categories
+        EvaluationCategory::firstOrCreate(
+            ['name' => $validated['name']],
+            ['weight' => 1, 'is_active' => true]
+        );
 
         $evaluation->update($validated);
 

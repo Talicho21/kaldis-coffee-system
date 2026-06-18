@@ -8,14 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import AppLayout from '@/layouts/app-layout';
 import { Head, Link, router } from '@inertiajs/react';
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { usePermission } from '@/hooks/user-permissions';
 import type { Branch, ChildCategory, Product, InventoryPeriod } from '@/types/inventory-count';
-import { CheckCircle2, AlertCircle, Loader2, ArrowRight, WifiOff } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import axios from 'axios';
-import { useOffline } from '@/hooks/use-offline';
-import { offlineInventory } from '@/lib/offlineStorage';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 type FiscalYear = {
 	id: number;
@@ -37,33 +36,32 @@ type PreviousCount = {
 	product_id: number;
 };
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-
-type ProductSaveState = {
-	state: SaveState;
-	error?: string;
+type ModalState = {
+	isOpen: boolean;
+	type: 'success' | 'validation' | 'error';
+	title: string;
+	message: string;
+	details?: string[];
 };
 
-export default function CreateInventoryCount({ 
-	branches = [], 
+export default function CreateInventoryCount({
+	branches = [],
 	userBranchId,
 	canManageAllBranches = false,
-	inventoryPeriods = [], 
+	inventoryPeriods = [],
 	childCategories = [],
 	products = []
 }: PageProps) {
 	const { can } = usePermission();
-	const { isOffline } = useOffline();
 
 	const [branchId, setBranchId] = useState<string>(userBranchId ? String(userBranchId) : '');
 	const [inventoryPeriodId, setInventoryPeriodId] = useState<string>('');
 	const [childCategoryId, setChildCategoryId] = useState<string>('');
 	const [productCounts, setProductCounts] = useState<Record<number, string>>({});
 	const [previousCounts, setPreviousCounts] = useState<Record<number, PreviousCount>>({});
-	const [saveStates, setSaveStates] = useState<Record<number, ProductSaveState>>({});
 	const [loadingPrevious, setLoadingPrevious] = useState(false);
-	
-	const saveTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [modal, setModal] = useState<ModalState>({ isOpen: false, type: 'success', title: '', message: '' });
 
 	const filteredProducts = useMemo(() => {
 		if (!childCategoryId) return [];
@@ -81,176 +79,148 @@ export default function CreateInventoryCount({
 					child_category_id: childCategoryId,
 				}
 			})
-			.then((response) => {
-				const counts = response.data.counts;
-				setPreviousCounts(counts);
-				
-				// Pre-fill product counts with previous values
-				const prefilledCounts: Record<number, string> = {};
-				Object.values(counts).forEach((count: any) => {
-					prefilledCounts[count.product_id] = count.count;
-				});
-				setProductCounts(prefilledCounts);
+				.then((response) => {
+					const counts = response.data.counts;
+					setPreviousCounts(counts);
 
-				// Show success message if previous counts found
-				if (response.data.success && response.data.message) {
-					toast.success(response.data.message);
-				}
-			})
-			.catch((error) => {
-				console.error('Failed to fetch previous counts:', error);
-				const errorMessage = error.response?.data?.message || 'Unable to load previous counts';
-				const errorDetails = error.response?.data?.details;
-				
-				if (errorDetails) {
-					toast.error(errorMessage, { description: errorDetails });
-				} else {
-					toast.error(errorMessage);
-				}
-			})
-			.finally(() => {
-				setLoadingPrevious(false);
-			});
+					// Pre-fill product counts with previous values
+					const prefilledCounts: Record<number, string> = {};
+					Object.values(counts).forEach((count: any) => {
+						prefilledCounts[count.product_id] = count.count;
+					});
+					setProductCounts(prefilledCounts);
+
+					// Show success message if previous counts found
+					if (response.data.success && response.data.message) {
+						toast.success(response.data.message);
+					}
+				})
+				.catch((error) => {
+					console.error('Failed to fetch previous counts:', error);
+					const errorMessage = error.response?.data?.message || 'Unable to load previous counts';
+					const errorDetails = error.response?.data?.details;
+
+					if (errorDetails) {
+						toast.error(errorMessage, { description: errorDetails });
+					} else {
+						toast.error(errorMessage);
+					}
+				})
+				.finally(() => {
+					setLoadingPrevious(false);
+				});
 		} else {
 			setPreviousCounts({});
 			setProductCounts({});
 		}
 	}, [branchId, inventoryPeriodId, childCategoryId]);
 
-	// Auto-save function with debouncing (supports offline)
-	const autoSaveCount = useCallback((productId: number, value: string) => {
-		if (!branchId || !inventoryPeriodId || !childCategoryId || !value || parseFloat(value) < 0) {
-			return;
-		}
-
-		// Clear existing timeout for this product
-		if (saveTimeoutRef.current[productId]) {
-			clearTimeout(saveTimeoutRef.current[productId]);
-		}
-
-		// Set saving state
-		setSaveStates((prev) => ({
-			...prev,
-			[productId]: { state: 'saving' }
-		}));
-
-		// Debounce the save
-		saveTimeoutRef.current[productId] = setTimeout(async () => {
-			const countData = {
-				branch_id: Number(branchId),
-				inventory_period_id: Number(inventoryPeriodId),
-				child_category_id: Number(childCategoryId),
-				product_id: productId,
-				count: parseFloat(value),
-			};
-
-			if (isOffline) {
-				// Save to offline storage
-				try {
-					await offlineInventory.saveCount(countData);
-					setSaveStates((prev) => ({
-						...prev,
-						[productId]: { state: 'saved' }
-					}));
-					toast.success('Saved offline - will sync when online', {
-						duration: 2000,
-					});
-					
-					// Clear saved state after 2 seconds
-					setTimeout(() => {
-						setSaveStates((prev) => ({
-							...prev,
-							[productId]: { state: 'idle' }
-						}));
-					}, 2000);
-				} catch (error: any) {
-					setSaveStates((prev) => ({
-						...prev,
-						[productId]: { state: 'error', error: 'Failed to save offline' }
-					}));
-					toast.error('Failed to save offline', { duration: 5000 });
-				}
-			} else {
-				// Save to server
-				axios.post(route('inventory-counts.auto-save'), countData)
-				.then((response) => {
-					setSaveStates((prev) => ({
-						...prev,
-						[productId]: { state: 'saved' }
-					}));
-					
-					// Show success toast for first save or updates
-					if (response.data.success && response.data.message) {
-						toast.success(response.data.message, {
-							duration: 2000,
-						});
-					}
-					
-					// Clear saved state after 2 seconds
-					setTimeout(() => {
-						setSaveStates((prev) => ({
-							...prev,
-							[productId]: { state: 'idle' }
-						}));
-					}, 2000);
-				})
-				.catch((error) => {
-					// Get user-friendly error message from server
-					const errorMessage = error.response?.data?.message || 
-						error.response?.data?.errors?.count?.[0] || 
-						'Unable to save count';
-					
-					const errorDetails = error.response?.data?.details;
-					
-					// Set error state with message
-					setSaveStates((prev) => ({
-						...prev,
-						[productId]: { state: 'error', error: errorMessage }
-					}));
-
-					// Also show toast notification for visibility
-					if (errorDetails) {
-						toast.error(errorMessage, { 
-							description: errorDetails,
-							duration: 5000 
-						});
-					} else {
-						toast.error(errorMessage, { duration: 5000 });
-					}
-				});
-			}
-		}, 1000); // 1 second debounce
-	}, [branchId, inventoryPeriodId, childCategoryId, isOffline]);
-
 	const handleCountChange = (productId: number, value: string) => {
 		setProductCounts((prev) => ({
 			...prev,
 			[productId]: value,
 		}));
-
-		// Trigger auto-save
-		autoSaveCount(productId, value);
 	};
 
 	const getValidationError = (product: Product, value: string): string | null => {
 		if (!value || value === '') return null;
-		
+
 		const numValue = parseFloat(value);
 		if (isNaN(numValue)) return 'Invalid number';
-		
+
 		if (product.min_count_threshold !== null && product.min_count_threshold !== undefined) {
 			if (numValue < product.min_count_threshold) {
 				return `Minimum: ${product.min_count_threshold}`;
 			}
 		}
-		
+
 		if (product.max_count_threshold !== null && product.max_count_threshold !== undefined) {
 			if (numValue > product.max_count_threshold) {
 				return `Maximum: ${product.max_count_threshold}`;
 			}
 		}
-		
+
 		return null;
+	};
+
+	const handleSubmit = () => {
+		if (!branchId || !inventoryPeriodId || !childCategoryId) {
+			setModal({
+				isOpen: true,
+				type: 'error',
+				title: 'Missing Fields',
+				message: 'Please select branch, period, and category.'
+			});
+			return;
+		}
+
+		const countsData = [];
+		const limitErrors: string[] = [];
+
+		for (const product of filteredProducts) {
+			const value = productCounts[product.id];
+			if (!value || value === '') continue;
+
+			const validationError = getValidationError(product, value);
+			if (validationError) {
+				limitErrors.push(`${product.product_name}: limit is ${validationError}`);
+			}
+
+			if (!validationError) {
+				countsData.push({
+					branch_id: Number(branchId),
+					inventory_period_id: Number(inventoryPeriodId),
+					child_category_id: Number(childCategoryId),
+					product_id: product.id,
+					count: parseFloat(value),
+				});
+			}
+		}
+
+		if (limitErrors.length > 0) {
+			setModal({
+				isOpen: true,
+				type: 'validation',
+				title: 'Limit Validation Error',
+				message: 'Please resolve the following count limits before submitting:',
+				details: limitErrors
+			});
+			return; // Stop submission if there are validation errors
+		}
+
+		if (countsData.length === 0) {
+			setModal({
+				isOpen: true,
+				type: 'error',
+				title: 'No Data',
+				message: 'No valid counts entered to submit.'
+			});
+			return;
+		}
+
+		setIsSubmitting(true);
+		router.post(route('inventory-counts.bulk'), { counts: countsData }, {
+			preserveState: true,
+			onSuccess: (page) => {
+				setModal({
+					isOpen: true,
+					type: 'success',
+					title: 'Success',
+					message: (page.props as any).flash?.success || 'Counts successfully submitted and tracked.'
+				});
+			},
+			onError: (errors) => {
+				setModal({
+					isOpen: true,
+					type: 'error',
+					title: 'Submission Failed',
+					message: (errors as any).counts || 'Failed to submit counts to the server.'
+				});
+			},
+			onFinish: () => {
+				setIsSubmitting(false);
+			}
+		});
 	};
 
 	const hasAnyCounts = Object.values(productCounts).some(count => count && parseFloat(count) > 0);
@@ -268,13 +238,7 @@ export default function CreateInventoryCount({
 					<CardHeader>
 						<CardTitle className="text-xl sm:text-2xl">Create Inventory Count</CardTitle>
 						<p className="text-sm text-muted-foreground mt-2">
-							Counts are automatically saved as you type. Previous counts will be shown if available.
-							{isOffline && (
-								<span className="flex items-center gap-1 text-orange-600 dark:text-orange-400 mt-1">
-									<WifiOff className="h-3.5 w-3.5" />
-									Offline mode: Changes will sync when you're back online
-								</span>
-							)}
+							Enter the inventory amounts for the selected category. When finished, submit the counts to log them into the system. Previous counts will be shown if available.
 						</p>
 					</CardHeader>
 					<CardContent className="p-4 sm:p-6">
@@ -358,13 +322,11 @@ export default function CreateInventoryCount({
 													<TableHead className="whitespace-nowrap">Product Name</TableHead>
 													<TableHead className="whitespace-nowrap w-[120px]">Previous</TableHead>
 													<TableHead className="whitespace-nowrap w-[200px]">Count</TableHead>
-													<TableHead className="whitespace-nowrap w-[100px]">Status</TableHead>
 												</TableRow>
 											</TableHeader>
 											<TableBody>
 												{filteredProducts.map((product) => {
 													const validationError = getValidationError(product, productCounts[product.id] || '');
-													const saveState = saveStates[product.id];
 													const previousCount = previousCounts[product.id];
 
 													return (
@@ -402,37 +364,6 @@ export default function CreateInventoryCount({
 																	)}
 																</div>
 															</TableCell>
-															<TableCell>
-																<div className="flex items-center justify-center">
-																	{saveState?.state === 'saving' && (
-																		<div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-																			<Loader2 className="h-4 w-4 animate-spin" />
-																			<span className="text-xs font-medium">Saving...</span>
-																		</div>
-																	)}
-																	{saveState?.state === 'saved' && (
-																		<div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-																			<CheckCircle2 className="h-4 w-4" />
-																			<span className="text-xs font-medium">Saved</span>
-																		</div>
-																	)}
-																	{saveState?.state === 'error' && (
-																		<div className="flex flex-col items-center gap-1 max-w-[200px]">
-																			<div className="flex items-center gap-1">
-																				<AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-																				<span className="text-xs text-red-600 dark:text-red-400 font-medium">
-																					Failed
-																				</span>
-																			</div>
-																			{saveState.error && (
-																				<span className="text-xs text-red-600 dark:text-red-400 text-center leading-tight">
-																					{saveState.error}
-																				</span>
-																			)}
-																		</div>
-																	)}
-																</div>
-															</TableCell>
 														</TableRow>
 													);
 												})}
@@ -448,29 +379,24 @@ export default function CreateInventoryCount({
 								</div>
 							)}
 
-							{hasAnyCounts && (
-								<Alert className="col-span-full bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-									<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-									<AlertDescription className="text-green-800 dark:text-green-200">
-										Your counts are being saved automatically as you type.
-									</AlertDescription>
-								</Alert>
-							)}
-
-							<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 col-span-full pt-4">
+							<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 col-span-full pt-6">
+								<Button
+									type="button"
+									onClick={handleSubmit}
+									className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700 text-white"
+									disabled={!hasAnyCounts || isSubmitting}
+								>
+									{isSubmitting ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<CheckCircle2 className="h-4 w-4" />
+									)}
+									Submit Counts
+								</Button>
 								<Link href="/inventory-counts" className="w-full sm:w-auto">
-									<Button 
-										type="button" 
-										className="w-full gap-2"
-										disabled={!hasAnyCounts}
-									>
-										Go to Inventory Counts
+									<Button type="button" variant="outline" className="w-full gap-2 text-muted-foreground">
+										Back to Inventory Counts
 										<ArrowRight className="h-4 w-4" />
-									</Button>
-								</Link>
-								<Link href="/inventory-counts" className="w-full sm:w-auto">
-									<Button type="button" variant="outline" className="w-full">
-										Cancel
 									</Button>
 								</Link>
 							</div>
@@ -478,6 +404,37 @@ export default function CreateInventoryCount({
 					</CardContent>
 				</Card>
 			</div>
+
+			<Dialog open={modal.isOpen} onOpenChange={(isOpen) => setModal(prev => ({ ...prev, isOpen }))}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle className={
+							modal.type === 'success' ? 'text-green-600' :
+								modal.type === 'validation' ? 'text-amber-600' :
+									'text-red-600'
+						}>
+							{modal.title}
+						</DialogTitle>
+						<DialogDescription className="text-base text-foreground mt-2">
+							{modal.message}
+						</DialogDescription>
+					</DialogHeader>
+					{modal.details && modal.details.length > 0 && (
+						<div className="py-2">
+							<ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground overflow-y-auto max-h-48">
+								{modal.details.map((detail, idx) => (
+									<li key={idx}>{detail}</li>
+								))}
+							</ul>
+						</div>
+					)}
+					<DialogFooter className="mt-4">
+						<Button onClick={() => setModal(prev => ({ ...prev, isOpen: false }))}>
+							Close
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</AppLayout>
 	);
 }

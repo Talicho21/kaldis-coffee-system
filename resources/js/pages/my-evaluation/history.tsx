@@ -20,13 +20,13 @@ export default function MyEvaluationHistory({ items, periods, request }: { items
   const { flash } = usePage<{ flash: { message?: string } }>().props;
   const [search, setSearch] = useState<string>(request?.search ?? '');
   const [periodId, setPeriodId] = useState<string>(request?.period_id ?? 'all');
-  
+
   useEffect(() => {
     if (flash.message) {
       toast.success(flash.message);
     }
   }, [flash.message]);
-  
+
   const handleDelete = (id: number) => {
     if (confirm('Are you sure you want to cancel/delete this evaluation?')) {
       router.delete(`/my-evaluation/response/${id}`);
@@ -80,14 +80,19 @@ export default function MyEvaluationHistory({ items, periods, request }: { items
                     <TableCell>{it.evaluable_type} · {it.evaluate_label}</TableCell>
                     <TableCell>{it.evaluation_period || 'No period'}</TableCell>
                     <TableCell>
-                      {it.is_editable && (
-                        <>
-                          <Link href={`/my-evaluation/response/${it.id}/edit`}>
-                            <Button variant="outline" size="sm">Edit</Button>
-                          </Link>
-                          <Button className="m-2" variant="destructive" size="sm" onClick={() => handleDelete(it.id)}>Cancel</Button>
-                        </>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Link href={`/my-evaluation/response/${it.id}/view`}>
+                          <Button variant="secondary" size="sm">View</Button>
+                        </Link>
+                        {it.is_editable && (
+                          <>
+                            <Link href={`/my-evaluation/response/${it.id}/edit`}>
+                              <Button variant="outline" size="sm">Edit</Button>
+                            </Link>
+                            <Button className="m-0" variant="destructive" size="sm" onClick={() => handleDelete(it.id)}>Cancel</Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

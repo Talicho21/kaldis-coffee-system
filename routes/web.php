@@ -166,6 +166,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('my-evaluation', [MyEvaluationController::class, 'index'])->name('my-evaluation.index');
     // Place static and specific routes BEFORE dynamic {evaluation}
     Route::get('my-evaluation/history', [MyEvaluationController::class, 'history'])->name('my-evaluation.history');
+    Route::get('my-evaluation/response/{evaluationResponse}/view', [MyEvaluationController::class, 'showResponse'])->name('my-evaluation.response.view');
     Route::get('my-evaluation/response/{evaluationResponse}/edit', [MyEvaluationController::class, 'editResponse'])->name('my-evaluation.response.edit');
     Route::put('my-evaluation/response/{evaluationResponse}', [MyEvaluationController::class, 'updateResponse'])->name('my-evaluation.response.update');
     Route::delete('my-evaluation/response/{evaluationResponse}', [MyEvaluationController::class, 'destroyResponse'])->name('my-evaluation.response.destroy');

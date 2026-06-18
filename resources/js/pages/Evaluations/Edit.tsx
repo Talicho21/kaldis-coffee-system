@@ -1,3 +1,4 @@
+import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,36 @@ export default function Edit({ evaluation, evaluatorGroups, evaluatesGroups, eva
         evaluator_group_id: evaluation.evaluator_group_id.toString(),
         evaluates_group_id: evaluation.evaluates_group_id.toString(),
     });
+
+    const [nameInput, setNameInput] = React.useState(evaluation.name);
+    const [showSuggestions, setShowSuggestions] = React.useState(false);
+    const nameRef = React.useRef<HTMLDivElement>(null);
+
+    const filtered = evaluationCategories.filter((c) =>
+        c.name.toLowerCase().includes(nameInput.toLowerCase())
+    );
+
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (nameRef.current && !nameRef.current.contains(e.target as Node)) {
+                setShowSuggestions(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const handleNameChange = (value: string) => {
+        setNameInput(value);
+        setData('name', value);
+        setShowSuggestions(true);
+    };
+
+    const handleSelectSuggestion = (name: string) => {
+        setNameInput(name);
+        setData('name', name);
+        setShowSuggestions(false);
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -75,23 +106,41 @@ export default function Edit({ evaluation, evaluatorGroups, evaluatesGroups, eva
                     <hr />
                     <CardContent>
                         <form onSubmit={handleSubmit} className="space-y-6">
+                            {/* Evaluation Name - combobox */}
                             <div className="space-y-2">
                                 <Label htmlFor="name">Evaluation Name</Label>
-                                <Select
-                                    value={data.name}
-                                    onValueChange={(value) => setData('name', value)}
-                                >
-                                    <SelectTrigger className={errors.name ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select evaluation name" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {evaluationCategories.map((category) => (
-                                            <SelectItem key={category.id} value={category.name}>
-                                                {category.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className="relative" ref={nameRef}>
+                                    <Input
+                                        id="name"
+                                        value={nameInput}
+                                        onChange={(e) => handleNameChange(e.target.value)}
+                                        onFocus={() => setShowSuggestions(true)}
+                                        placeholder="Type or select an evaluation name..."
+                                        className={errors.name ? 'border-red-500' : ''}
+                                        autoComplete="off"
+                                    />
+                                    {showSuggestions && (filtered.length > 0 || nameInput.trim()) && (
+                                        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover shadow-md">
+                                            {nameInput.trim() && !filtered.some((c) => c.name.toLowerCase() === nameInput.toLowerCase()) && (
+                                                <li
+                                                    className="cursor-pointer px-3 py-2 text-sm font-medium text-primary hover:bg-accent"
+                                                    onMouseDown={() => handleSelectSuggestion(nameInput.trim())}
+                                                >
+                                                    Create "<span className="font-semibold">{nameInput.trim()}</span>"
+                                                </li>
+                                            )}
+                                            {filtered.map((cat) => (
+                                                <li
+                                                    key={cat.id}
+                                                    className="cursor-pointer px-3 py-2 text-sm hover:bg-accent"
+                                                    onMouseDown={() => handleSelectSuggestion(cat.name)}
+                                                >
+                                                    {cat.name}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                                 {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
                             </div>
 

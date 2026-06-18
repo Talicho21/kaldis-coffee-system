@@ -59,7 +59,7 @@ class MyEvaluationController extends Controller
 
         // Check if this is a Branch Managers Evaluation
         $isBranchManagerEvaluation = stripos($evaluation->name, 'Branch Manager') !== false;
-        
+
         // Get branch filter from query parameter
         $branchId = $request->query('branch_id');
 
@@ -86,14 +86,14 @@ class MyEvaluationController extends Controller
                             ->get(['employees.id', 'first_name', 'last_name', 'email']);
                     }
                     // Exclude self in all cases
-                    $evaluatees = $evaluatees->filter(fn ($emp) => (int) $emp->id !== (int) $user->employee_id);
+                    $evaluatees = $evaluatees->filter(fn($emp) => (int) $emp->id !== (int) $user->employee_id);
                     break;
                 case 'department':
                     $evaluatees = $evaluation->evaluatesGroup->departments()->get(['departments.id', 'name']);
                     // Exclude own department if available
                     $evaluatorDeptId = optional(Employee::find($user->employee_id))->department_id;
                     if ($evaluatorDeptId) {
-                        $evaluatees = $evaluatees->filter(fn ($dept) => (int) $dept->id !== (int) $evaluatorDeptId);
+                        $evaluatees = $evaluatees->filter(fn($dept) => (int) $dept->id !== (int) $evaluatorDeptId);
                     }
                     break;
                 case 'branch':
@@ -141,10 +141,10 @@ class MyEvaluationController extends Controller
                         'label' => trim(($ent->first_name ?? '') . ' ' . ($ent->last_name ?? '')),
                     ];
                 }
-                return [ 'id' => $ent->id, 'label' => $ent->name ];
+                return ['id' => $ent->id, 'label' => $ent->name];
             })->values(),
             'alreadyEvaluatedByPeriod' => $alreadyEvaluatedByPeriod,
-            'questions' => $questions->map(fn ($q) => [ 'id' => $q->id, 'question_text' => $q->question_text ]),
+            'questions' => $questions->map(fn($q) => ['id' => $q->id, 'question_text' => $q->question_text]),
             'isBranchManagerEvaluation' => $isBranchManagerEvaluation && $evaluableType === 'employee',
             'branches' => $branches,
             'selectedBranchId' => $branchId,
@@ -231,10 +231,10 @@ class MyEvaluationController extends Controller
                     $inner->whereHas('evaluation', function ($qq) use ($search) {
                         $qq->where('name', 'like', "%{$search}%");
                     })
-                    ->orWhereHas('evaluationPeriod', function ($qq) use ($search) {
-                        $qq->where('evaluation_period_name', 'like', "%{$search}%");
-                    })
-                    ->orWhere('evaluable_type', 'like', "%{$search}%");
+                        ->orWhereHas('evaluationPeriod', function ($qq) use ($search) {
+                            $qq->where('evaluation_period_name', 'like', "%{$search}%");
+                        })
+                        ->orWhere('evaluable_type', 'like', "%{$search}%");
                 });
             })
             ->when($periodId, function ($q) use ($periodId) {
@@ -269,7 +269,7 @@ class MyEvaluationController extends Controller
 
             return [
                 'id' => $r->id,
-                'evaluation' => [ 'id' => $r->evaluation_id, 'name' => optional($r->evaluation)->name ],
+                'evaluation' => ['id' => $r->evaluation_id, 'name' => optional($r->evaluation)->name],
                 'evaluable_type' => $r->evaluable_type,
                 'evaluate_label' => $label,
                 'evaluation_period' => optional($r->evaluationPeriod)->evaluation_period_name,
@@ -291,7 +291,7 @@ class MyEvaluationController extends Controller
     public function editResponse(EvaluationResponse $evaluationResponse)
     {
         $user = Auth::user();
-        if ($evaluationResponse->evaluator_id !== $user->id) {
+        if ((int) $evaluationResponse->evaluator_id !== (int) $user->id) {
             abort(403);
         }
 
@@ -305,7 +305,7 @@ class MyEvaluationController extends Controller
             : collect();
 
         $prefill = $evaluationResponse->questionResponses()->with('question')->get()->map(function ($qr) {
-            return [ 'question_id' => $qr->question_id, 'score' => $qr->score, 'question_text' => $qr->question?->question_text ];
+            return ['question_id' => $qr->question_id, 'score' => $qr->score, 'question_text' => $qr->question?->question_text];
         });
 
         return Inertia::render('my-evaluation/edit', [
@@ -317,7 +317,7 @@ class MyEvaluationController extends Controller
                 'evaluate_id' => $evaluationResponse->evaluate_id,
                 'comment' => $evaluationResponse->comment,
             ],
-            'questions' => $questions->map(fn ($q) => [ 'id' => $q->id, 'question_text' => $q->question_text ]),
+            'questions' => $questions->map(fn($q) => ['id' => $q->id, 'question_text' => $q->question_text]),
             'questionResponses' => $prefill,
         ]);
     }
@@ -325,7 +325,7 @@ class MyEvaluationController extends Controller
     public function updateResponse(Request $request, EvaluationResponse $evaluationResponse)
     {
         $user = Auth::user();
-        if ($evaluationResponse->evaluator_id !== $user->id) {
+        if ((int) $evaluationResponse->evaluator_id !== (int) $user->id) {
             abort(403);
         }
         if (optional($evaluationResponse->evaluationPeriod)->status !== 'active') {
@@ -357,7 +357,7 @@ class MyEvaluationController extends Controller
     public function destroyResponse(EvaluationResponse $evaluationResponse)
     {
         $user = Auth::user();
-        if ($evaluationResponse->evaluator_id !== $user->id) {
+        if ((int) $evaluationResponse->evaluator_id !== (int) $user->id) {
             abort(403);
         }
         if (optional($evaluationResponse->evaluationPeriod)->status !== 'active') {
@@ -367,6 +367,56 @@ class MyEvaluationController extends Controller
         $evaluationResponse->delete();
 
         return back()->with('message', 'Evaluation deleted successfully!');
+    }
+    public function showResponse(EvaluationResponse $evaluationResponse)
+    {
+        $user = Auth::user();
+        if ((int) $evaluationResponse->evaluator_id !== (int) $user->id) {
+            abort(403);
+        }
+
+        $evaluation = $evaluationResponse->evaluation()->with(['evaluatesGroup.questionGroup'])->first();
+
+        $label = '';
+        switch ($evaluationResponse->evaluable_type) {
+            case 'employee':
+                $emp = \App\Models\Employee::find($evaluationResponse->evaluate_id);
+                $label = $emp ? trim(($emp->first_name ?? '') . ' ' . ($emp->last_name ?? '')) : 'Employee #' . $evaluationResponse->evaluate_id;
+                break;
+            case 'department':
+                $dep = \App\Models\Department::find($evaluationResponse->evaluate_id);
+                $label = $dep?->name ?? 'Department #' . $evaluationResponse->evaluate_id;
+                break;
+            case 'branch':
+                $br = \App\Models\Branch::find($evaluationResponse->evaluate_id);
+                $label = $br?->name ?? 'Branch #' . $evaluationResponse->evaluate_id;
+                break;
+            case 'other':
+                $oth = \App\Models\OtherEvaluable::find($evaluationResponse->evaluate_id);
+                $label = $oth?->name ?? 'Other #' . $evaluationResponse->evaluate_id;
+                break;
+        }
+
+        $questionsWithScores = $evaluationResponse->questionResponses()->with('question')->get()->map(function ($qr) {
+            return [
+                'question_id' => $qr->question_id,
+                'question_text' => $qr->question?->question_text,
+                'score' => $qr->score,
+            ];
+        });
+
+        return Inertia::render('my-evaluation/view', [
+            'response' => [
+                'id' => $evaluationResponse->id,
+                'evaluation_name' => optional($evaluation)->name,
+                'evaluate_label' => $label,
+                'evaluable_type' => $evaluationResponse->evaluable_type,
+                'period_name' => optional($evaluationResponse->evaluationPeriod)->evaluation_period_name,
+                'comment' => $evaluationResponse->comment,
+                'created_at' => $evaluationResponse->created_at->format('M d, Y H:i'),
+            ],
+            'questionsWithScores' => $questionsWithScores,
+        ]);
     }
 }
 
