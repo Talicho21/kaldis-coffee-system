@@ -13,12 +13,12 @@ type Evaluatee = { user_id?: number | null; name: string; email?: string | null 
 type Question = { id: number; question_text: string };
 type Branch = { id: number; name: string };
 
-export default function MyEvaluationShow({ 
-  evaluation, 
-  evaluationPeriods, 
-  evaluatees, 
-  evaluableType, 
-  alreadyEvaluatedByPeriod, 
+export default function MyEvaluationShow({
+  evaluation,
+  evaluationPeriods,
+  evaluatees,
+  evaluableType,
+  alreadyEvaluatedByPeriod,
   questions,
   isBranchManagerEvaluation = false,
   branches = [],
@@ -40,9 +40,11 @@ export default function MyEvaluationShow({
 
   const pendingEvaluatees = useMemo(() => {
     const periodKey = selectedPeriodId || '';
-    const alreadyForPeriod = new Set((alreadyEvaluatedByPeriod?.[periodKey] || []));
+    // map alreadyEvaluatedByPeriod contents to numbers for robust comparison
+    const alreadyForPeriodNumeric = (alreadyEvaluatedByPeriod?.[periodKey] || []).map(id => Number(id));
+    const alreadyForPeriod = new Set(alreadyForPeriodNumeric);
     const list = Array.isArray(evaluatees) ? evaluatees : [];
-    return list.filter((e) => !alreadyForPeriod.has(e.id));
+    return list.filter((e) => !alreadyForPeriod.has(Number(e.id)));
   }, [evaluatees, alreadyEvaluatedByPeriod, selectedPeriodId]);
 
   const { data, setData, post, processing, errors, reset } = useForm({
@@ -119,8 +121,8 @@ export default function MyEvaluationShow({
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
-                      {branchFilter 
-                        ? 'Showing managers from the selected branch. You can change branches to evaluate managers from other branches.' 
+                      {branchFilter
+                        ? 'Showing managers from the selected branch. You can change branches to evaluate managers from other branches.'
                         : 'Please select a branch to view and evaluate its managers.'}
                     </p>
                   </CardContent>
@@ -138,69 +140,69 @@ export default function MyEvaluationShow({
               ) : (
                 <>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Evaluation Period</Label>
-                  <Select value={selectedPeriodId} onValueChange={onSelectPeriod}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select active period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {evaluationPeriods.map((p) => (
-                        <SelectItem key={p.id} value={p.id.toString()}>
-                          {p.evaluation_period_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <InputError message={errors.evaluation_period_id as any} />
-                </div>
+                    <div className="space-y-2">
+                      <Label>Evaluation Period</Label>
+                      <Select value={selectedPeriodId} onValueChange={onSelectPeriod}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select active period" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {evaluationPeriods.map((p) => (
+                            <SelectItem key={p.id} value={p.id.toString()}>
+                              {p.evaluation_period_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <InputError message={errors.evaluation_period_id as any} />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>Evaluate ({evaluableType})</Label>
-                  <Select value={selectedUserId} onValueChange={(v) => { onSelectEvaluatee(v); initResponsesIfEmpty(); }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select evaluate" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pendingEvaluatees.map((ev) => (
-                        <SelectItem key={ev.id} value={ev.id.toString()}>
-                          {ev.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <InputError message={errors.evaluate_id as any} />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <Label>Questions</Label>
-                {(questions || []).map((q, idx) => (
-                  <div key={q.id} className="flex items-center justify-between rounded border p-3">
-                    <div className="pr-4">{q.question_text}</div>
-                    <Select
-                      value={(data.question_responses[idx]?.score ?? 3).toString()}
-                      onValueChange={(v) => {
-                        const next = [...data.question_responses];
-                        next[idx] = { question_id: q.id, score: parseInt(v) };
-                        setData('question_responses', next);
-                      }}
-                    >
-                      <SelectTrigger className="w-36">
-                        <SelectValue placeholder="Score" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 - Poor</SelectItem>
-                        <SelectItem value="2">2 - Fair</SelectItem>
-                        <SelectItem value="3">3 - Good</SelectItem>
-                        <SelectItem value="4">4 - Very Good</SelectItem>
-                        <SelectItem value="5">5 - Excellent</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                      <Label>Evaluate ({evaluableType})</Label>
+                      <Select value={selectedUserId} onValueChange={(v) => { onSelectEvaluatee(v); initResponsesIfEmpty(); }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select evaluate" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pendingEvaluatees.map((ev) => (
+                            <SelectItem key={ev.id} value={ev.id.toString()}>
+                              {ev.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <InputError message={errors.evaluate_id as any} />
+                    </div>
                   </div>
-                ))}
-                <InputError message={errors.question_responses as any} />
-              </div>
+
+                  <div className="space-y-4">
+                    <Label>Questions</Label>
+                    {(questions || []).map((q, idx) => (
+                      <div key={q.id} className="flex items-center justify-between rounded border p-3">
+                        <div className="pr-4">{q.question_text}</div>
+                        <Select
+                          value={(data.question_responses[idx]?.score ?? 3).toString()}
+                          onValueChange={(v) => {
+                            const next = [...data.question_responses];
+                            next[idx] = { question_id: q.id, score: parseInt(v) };
+                            setData('question_responses', next);
+                          }}
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue placeholder="Score" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 - Poor</SelectItem>
+                            <SelectItem value="2">2 - Fair</SelectItem>
+                            <SelectItem value="3">3 - Good</SelectItem>
+                            <SelectItem value="4">4 - Very Good</SelectItem>
+                            <SelectItem value="5">5 - Excellent</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                    <InputError message={errors.question_responses as any} />
+                  </div>
 
                   <div className="flex justify-end gap-3">
                     <Button type="submit" disabled={processing}>Submit</Button>
