@@ -91,19 +91,32 @@ class ExpenseBudgetController extends Controller
                 'id' => $item->id,
                 'month' => $item->expenseBudget->month,
                 'year' => $item->expenseBudget->year,
+                'branch_id' => $item->expenseBudget->branch_id,
+                'department_id' => $item->expenseBudget->department_id,
                 'branch' => $item->expenseBudget->branch?->name,
                 'department' => $item->expenseBudget->department?->name,
+                'expense_item_id' => $item->expense_item_id,
                 'expense_item' => $item->expenseItem?->expense_type,
                 'planned_budget' => $item->planned_budget,
                 'actual_budget' => 0,
-                'status' => $item->expenseBudget->status,
+                'status' => $item->status,
                 'submitted_by' => $item->expenseBudget->creator?->name,
             ]);
+
+        $expenseItems = ExpenseItem::query()
+            ->orderBy('expense_type')
+            ->get(['expense_parent_acc_code', 'expense_type'])
+            ->map(fn (ExpenseItem $item) => [
+                'id' => $item->expense_parent_acc_code,
+                'name' => $item->expense_type,
+            ])
+            ->values();
 
         return Inertia::render('Budget/ExpenseBudget/Index', [
             'items' => $items,
             'branches' => $branches,
             'departments' => $departments,
+            'expenseItems' => $expenseItems,
             'years' => $years,
             'request' => request()->only(['search', 'branch_id', 'department_id', 'month', 'year']),
         ]);
@@ -247,7 +260,6 @@ class ExpenseBudgetController extends Controller
                     'department_id' => $validated['department_id'],
                     'budget_amount' => $newBudgetAmount,
                     'created_by' => auth()->id(),
-                    'status' => 'draft',
                 ]);
             }
 
@@ -257,6 +269,7 @@ class ExpenseBudgetController extends Controller
                     'expense_item_id' => $item['expense_item_id'],
                     'prev_month_budget' => $item['prev_month_budget'] ?? null,
                     'planned_budget' => $item['planned_budget'],
+                    'status' => 'draft',
                 ]);
             }
         });
@@ -291,6 +304,113 @@ class ExpenseBudgetController extends Controller
         return redirect()
             ->route('expense-budget.index')
             ->with('message', 'Expense budget item deleted successfully.');
+    }
+
+    public function updateItem(Request $request, ExpenseBudgetItem $expenseBudgetItem): RedirectResponse
+    {
+        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+
+        $validated = $request->validate([
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'year' => ['required', 'integer', 'min:1990', 'max:2100'],
+            'branch_id' => ['required', 'exists:branches,id'],
+            'department_id' => ['nullable', 'exists:departments,id'],
+            'expense_item_id' => ['required', 'exists:expenses,expense_parent_acc_code'],
+            'planned_budget' => ['required', 'numeric', 'min:0'],
+            'status' => ['required', 'in:draft,submitted,approved'],
+        ]);
+
+        $branch = Branch::findOrFail($validated['branch_id']);
+        $isHeadOffice = $this->isHeadOfficeBranch($branch);
+
+        if ($isHeadOffice && empty($validated['department_id'])) {
+            throw ValidationException::withMessages([
+                'department_id' => 'The department field is required when the selected branch is Head Office.',
+            ]);
+        }
+
+        if (! $isHeadOffice) {
+            $validated['department_id'] = null;
+        }
+
+        $departmentId = $validated['department_id'] ? (int) $validated['department_id'] : null;
+        $newPlannedBudget = (float) $validated['planned_budget'];
+
+        $duplicateExists = ExpenseBudgetItem::query()
+            ->where('id', '!=', $expenseBudgetItem->id)
+            ->where('expense_item_id', $validated['expense_item_id'])
+            ->whereHas('expenseBudget', function ($query) use ($validated, $departmentId) {
+                $query
+                    ->where('month', $validated['month'])
+                    ->where('year', $validated['year'])
+                    ->where('branch_id', $validated['branch_id'])
+                    ->when(
+                        $departmentId,
+                        fn ($q) => $q->where('department_id', $departmentId),
+                        fn ($q) => $q->whereNull('department_id')
+                    );
+            })
+            ->exists();
+
+        if ($duplicateExists) {
+            throw ValidationException::withMessages([
+                'expense_item_id' => 'A planned budget has already been set for this expense item.',
+            ]);
+        }
+
+        DB::transaction(function () use ($expenseBudgetItem, $validated, $departmentId, $newPlannedBudget) {
+            $oldBudget = $expenseBudgetItem->expenseBudget;
+            $oldPlannedBudget = (float) $expenseBudgetItem->planned_budget;
+
+            $targetBudget = $this->findExpenseBudgetForScope(
+                (int) $validated['month'],
+                (int) $validated['year'],
+                (int) $validated['branch_id'],
+                $departmentId,
+            );
+
+            if (! $targetBudget) {
+                $targetBudget = ExpenseBudget::create([
+                    'month' => $validated['month'],
+                    'year' => $validated['year'],
+                    'branch_id' => $validated['branch_id'],
+                    'department_id' => $validated['department_id'],
+                    'budget_amount' => 0,
+                    'created_by' => auth()->id(),
+                ]);
+            }
+
+            if ($oldBudget && $oldBudget->id !== $targetBudget->id) {
+                $oldBudget->update([
+                    'budget_amount' => max(0, (float) $oldBudget->budget_amount - $oldPlannedBudget),
+                ]);
+            } elseif ($oldBudget && $oldBudget->id === $targetBudget->id) {
+                $targetBudget->update([
+                    'budget_amount' => max(0, (float) $targetBudget->budget_amount - $oldPlannedBudget + $newPlannedBudget),
+                ]);
+            }
+
+            $expenseBudgetItem->update([
+                'expense_budget_id' => $targetBudget->id,
+                'expense_item_id' => $validated['expense_item_id'],
+                'planned_budget' => $newPlannedBudget,
+                'status' => $validated['status'],
+            ]);
+
+            if ($oldBudget && $oldBudget->id !== $targetBudget->id) {
+                $targetBudget->update([
+                    'budget_amount' => (float) $targetBudget->budget_amount + $newPlannedBudget,
+                ]);
+
+                if ($oldBudget->items()->count() === 0) {
+                    $oldBudget->delete();
+                }
+            }
+        });
+
+        return redirect()
+            ->route('expense-budget.index')
+            ->with('message', 'Expense budget item updated successfully.');
     }
 
     public function getPrevBudget(Request $request): JsonResponse

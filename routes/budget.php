@@ -11,6 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:manage expense budgets')->group(function () {
         Route::get('budget/expense-budget/create', [ExpenseBudgetController::class, 'create'])->name('expense-budget.create');
         Route::post('budget/expense-budget', [ExpenseBudgetController::class, 'store'])->name('expense-budget.store');
+        Route::patch('budget/expense-budget/items/{expenseBudgetItem}', [ExpenseBudgetController::class, 'updateItem'])->name('expense-budget.items.update');
         Route::delete('budget/expense-budget/items/{expenseBudgetItem}', [ExpenseBudgetController::class, 'destroyItem'])->name('expense-budget.items.destroy');
         Route::get('budget/expense-budget/prev-budget', [ExpenseBudgetController::class, 'getPrevBudget'])->name('expense-budget.prev-budget');
         Route::get('budget/expense-budget/budgeted-items', [ExpenseBudgetController::class, 'getBudgetedExpenseItems'])->name('expense-budget.budgeted-items');

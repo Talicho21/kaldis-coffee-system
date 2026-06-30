@@ -20,7 +20,6 @@ class ExpenseBudget extends Model
         'department_id',
         'budget_amount',
         'created_by',
-        'status',
     ];
 
     protected $casts = [

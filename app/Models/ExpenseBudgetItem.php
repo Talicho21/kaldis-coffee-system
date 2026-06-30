@@ -15,6 +15,7 @@ class ExpenseBudgetItem extends Model
         'expense_item_id',
         'prev_month_budget',
         'planned_budget',
+        'status',
     ];
 
     protected $casts = [
