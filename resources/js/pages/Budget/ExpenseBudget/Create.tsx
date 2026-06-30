@@ -1,0 +1,802 @@
+import InputError from '@/components/input-error';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import AppLayout from '@/layouts/app-layout';
+import { ETHIOPIAN_FISCAL_MONTHS, formatEthiopianDate, gregorianToEthiopian } from '@/lib/ethiopian-calendar';
+import { cn } from '@/lib/utils';
+import { type BreadcrumbItem } from '@/types';
+import { Head, router, useForm } from '@inertiajs/react';
+import {
+    Check,
+    ChevronsUpDown,
+    ClipboardList,
+    Droplet,
+    FileText,
+    Plus,
+    Save,
+    Trash2,
+    Zap,
+    type LucideIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Budget', href: null },
+    { title: 'Expense Budget', href: null },
+];
+
+const expenseIconMap: Record<string, LucideIcon> = {
+    clipboard: ClipboardList,
+    stationery: ClipboardList,
+    zap: Zap,
+    electricity: Zap,
+    droplet: Droplet,
+    water: Droplet,
+};
+
+type BranchOption = {
+    id: number;
+    name: string;
+    branch_code: string;
+};
+
+type DepartmentOption = {
+    id: number;
+    name: string;
+};
+
+type ExpenseItemOption = {
+    id: number;
+    name: string;
+    icon: string | null;
+};
+
+type BudgetItemRow = {
+    expense_item_id: number | '';
+    planned_budget: string;
+};
+
+type CreateProps = {
+    branches: BranchOption[];
+    departments: DepartmentOption[];
+    frequentExpenseItems: ExpenseItemOption[];
+    otherExpenseItems: ExpenseItemOption[];
+};
+
+function isHeadOfficeBranch(branch: BranchOption | null): boolean {
+    if (!branch) {
+        return false;
+    }
+
+    if (branch.branch_code?.toUpperCase() === 'HO') {
+        return true;
+    }
+
+    return branch.name.includes('Head Office');
+}
+
+function resolveExpenseIcon(icon: string | null): LucideIcon {
+    if (!icon) {
+        return ClipboardList;
+    }
+
+    return expenseIconMap[icon.toLowerCase()] ?? ClipboardList;
+}
+
+function formatAmount(value: number | null | undefined): string | null {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    }).format(value);
+}
+
+function parseFormattedNumber(value: string): number {
+    const cleaned = value.replace(/,/g, '').trim();
+
+    if (cleaned === '' || cleaned === '.') {
+        return Number.NaN;
+    }
+
+    return Number.parseFloat(cleaned);
+}
+
+function formatBudgetInput(value: string): string {
+    const sanitized = value.replace(/[^\d.]/g, '');
+    const [integerPart = '', ...decimalParts] = sanitized.split('.');
+    const decimalPart = decimalParts.join('').slice(0, 2);
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    if (decimalParts.length > 0) {
+        return `${formattedInteger}.${decimalPart}`;
+    }
+
+    return formattedInteger;
+}
+
+function buildInitialItems(frequentExpenseItems: ExpenseItemOption[]): BudgetItemRow[] {
+    if (frequentExpenseItems.length === 0) {
+        return [{ expense_item_id: '', planned_budget: '' }];
+    }
+
+    return frequentExpenseItems.map((item) => ({
+        expense_item_id: item.id,
+        planned_budget: '',
+    }));
+}
+
+function getSavedItemIds(items: BudgetItemRow[]): Set<number> {
+    return new Set(
+        items
+            .filter(
+                (item) =>
+                    typeof item.expense_item_id === 'number' &&
+                    item.planned_budget !== '' &&
+                    !Number.isNaN(parseFormattedNumber(item.planned_budget)),
+            )
+            .map((item) => item.expense_item_id as number),
+    );
+}
+
+function getItemsAfterSave(currentItems: BudgetItemRow[], savedItemIds: Set<number>): BudgetItemRow[] {
+    const remaining = currentItems.filter((item) => {
+        if (typeof item.expense_item_id === 'number' && savedItemIds.has(item.expense_item_id)) {
+            return false;
+        }
+
+        if (item.planned_budget !== '') {
+            return false;
+        }
+
+        return true;
+    });
+
+    if (remaining.length === 0) {
+        return [{ expense_item_id: '', planned_budget: '' }];
+    }
+
+    return remaining;
+}
+
+export default function CreateExpenseBudget({
+    branches,
+    departments,
+    frequentExpenseItems,
+    otherExpenseItems,
+}: CreateProps) {
+    const now = new Date();
+    const currentEthiopian = gregorianToEthiopian(now);
+    const ethiopianDate = formatEthiopianDate(now);
+
+    const { data, setData, post, processing, errors, transform, setError, clearErrors } = useForm({
+        month: currentEthiopian.month,
+        year: currentEthiopian.year,
+        branch_id: '',
+        department_id: '',
+        items: buildInitialItems(frequentExpenseItems),
+    });
+
+    const [openBranch, setOpenBranch] = useState(false);
+    const [openDepartment, setOpenDepartment] = useState(false);
+    const [openExpenseRow, setOpenExpenseRow] = useState<number | null>(null);
+    const [selectedBranch, setSelectedBranch] = useState<BranchOption | null>(null);
+    const [selectedDepartment, setSelectedDepartment] = useState<DepartmentOption | null>(null);
+    const [prevBudgets, setPrevBudgets] = useState<Record<number, number | null>>({});
+    const [loadingPrevBudget, setLoadingPrevBudget] = useState<Record<number, boolean>>({});
+    const [budgetedExpenseItemIds, setBudgetedExpenseItemIds] = useState<Set<number>>(new Set());
+    const itemsRef = useRef(data.items);
+    itemsRef.current = data.items;
+
+    const allExpenseItems = useMemo(
+        () => [...frequentExpenseItems, ...otherExpenseItems],
+        [frequentExpenseItems, otherExpenseItems],
+    );
+
+    const expenseItemMap = useMemo(
+        () => new Map(allExpenseItems.map((item) => [item.id, item])),
+        [allExpenseItems],
+    );
+
+    const isHeadOffice = isHeadOfficeBranch(selectedBranch);
+
+    const totalBudget = useMemo(
+        () =>
+            data.items.reduce((sum, item) => {
+                const value = parseFormattedNumber(item.planned_budget);
+                return sum + (Number.isNaN(value) ? 0 : value);
+            }, 0),
+        [data.items],
+    );
+
+    const fetchPrevBudget = useCallback(
+        async (rowIndex: number, expenseItemId: number, branchId: string, departmentId: string, month: number, year: number, headOffice: boolean) => {
+            if (!branchId || !expenseItemId) {
+                return;
+            }
+
+            if (headOffice && !departmentId) {
+                return;
+            }
+
+            setLoadingPrevBudget((prev) => ({ ...prev, [rowIndex]: true }));
+
+            try {
+                const params = new URLSearchParams({
+                    expense_item_id: String(expenseItemId),
+                    branch_id: branchId,
+                    month: String(month),
+                    year: String(year),
+                });
+
+                if (headOffice && departmentId) {
+                    params.set('department_id', departmentId);
+                }
+
+                const response = await fetch(`/budget/expense-budget/prev-budget?${params.toString()}`);
+                const result = (await response.json()) as { prev_month_budget: number | null };
+
+                setPrevBudgets((prev) => ({
+                    ...prev,
+                    [rowIndex]: result.prev_month_budget ?? null,
+                }));
+            } finally {
+                setLoadingPrevBudget((prev) => ({ ...prev, [rowIndex]: false }));
+            }
+        },
+        [],
+    );
+
+    const fetchBudgetedExpenseItems = useCallback(
+        async (branchId: string, departmentId: string, month: number, year: number, headOffice: boolean) => {
+            if (!branchId) {
+                setBudgetedExpenseItemIds(new Set());
+                return;
+            }
+
+            if (headOffice && !departmentId) {
+                setBudgetedExpenseItemIds(new Set());
+                return;
+            }
+
+            const params = new URLSearchParams({
+                branch_id: branchId,
+                month: String(month),
+                year: String(year),
+            });
+
+            if (headOffice && departmentId) {
+                params.set('department_id', departmentId);
+            }
+
+            const response = await fetch(`/budget/expense-budget/budgeted-items?${params.toString()}`);
+            const result = (await response.json()) as { expense_item_ids: number[] };
+
+            setBudgetedExpenseItemIds(new Set(result.expense_item_ids));
+        },
+        [],
+    );
+
+    useEffect(() => {
+        transform((formData) => ({
+            ...formData,
+            items: formData.items
+                .map((item: BudgetItemRow, index: number) => ({ item, index }))
+                .filter(({ item }) => typeof item.expense_item_id === 'number')
+                .map(({ item, index }) => {
+                    const parsedBudget =
+                        item.planned_budget === '' || item.planned_budget === null
+                            ? null
+                            : parseFormattedNumber(item.planned_budget);
+
+                    return {
+                        expense_item_id: item.expense_item_id,
+                        planned_budget: parsedBudget === null || Number.isNaN(parsedBudget) ? null : parsedBudget,
+                        prev_month_budget: prevBudgets[index] ?? null,
+                    };
+                }),
+        }));
+    }, [transform, prevBudgets]);
+
+    useEffect(() => {
+        fetchBudgetedExpenseItems(
+            data.branch_id,
+            data.department_id,
+            data.month,
+            data.year,
+            isHeadOffice,
+        );
+    }, [data.branch_id, data.department_id, data.month, data.year, isHeadOffice, fetchBudgetedExpenseItems]);
+
+    useEffect(() => {
+        if (budgetedExpenseItemIds.size === 0) {
+            return;
+        }
+
+        const hasBudgetedRow = data.items.some(
+            (item) => typeof item.expense_item_id === 'number' && budgetedExpenseItemIds.has(item.expense_item_id),
+        );
+
+        if (!hasBudgetedRow) {
+            return;
+        }
+
+        const filtered = data.items.filter(
+            (item) => typeof item.expense_item_id !== 'number' || !budgetedExpenseItemIds.has(item.expense_item_id),
+        );
+
+        setData('items', filtered.length > 0 ? filtered : [{ expense_item_id: '', planned_budget: '' }]);
+    }, [budgetedExpenseItemIds, data.items, setData]);
+
+    useEffect(() => {
+        if (!data.branch_id) {
+            return;
+        }
+
+        if (isHeadOffice && !data.department_id) {
+            return;
+        }
+
+        itemsRef.current.forEach((item, index) => {
+            if (typeof item.expense_item_id === 'number') {
+                fetchPrevBudget(
+                    index,
+                    item.expense_item_id,
+                    data.branch_id,
+                    data.department_id,
+                    data.month,
+                    data.year,
+                    isHeadOffice,
+                );
+            }
+        });
+    }, [data.branch_id, data.department_id, data.month, data.year, isHeadOffice, fetchPrevBudget]);
+
+    function handleBranchSelect(branch: BranchOption) {
+        setSelectedBranch(branch);
+        setSelectedDepartment(null);
+        setData({
+            ...data,
+            branch_id: String(branch.id),
+            department_id: '',
+        });
+        setOpenBranch(false);
+    }
+
+    function handleDepartmentSelect(department: DepartmentOption) {
+        setSelectedDepartment(department);
+        setData('department_id', String(department.id));
+        setOpenDepartment(false);
+    }
+
+    function handleExpenseItemSelect(rowIndex: number, expenseItemId: number) {
+        setData(
+            'items',
+            data.items.map((item, index) =>
+                index === rowIndex ? { ...item, expense_item_id: expenseItemId } : item,
+            ),
+        );
+        setOpenExpenseRow(null);
+        fetchPrevBudget(
+            rowIndex,
+            expenseItemId,
+            data.branch_id,
+            data.department_id,
+            data.month,
+            data.year,
+            isHeadOffice,
+        );
+    }
+
+    function handlePlannedBudgetChange(rowIndex: number, value: string) {
+        const formattedValue = formatBudgetInput(value);
+
+        setData(
+            'items',
+            data.items.map((item, index) =>
+                index === rowIndex ? { ...item, planned_budget: formattedValue } : item,
+            ),
+        );
+    }
+
+    function addExpenseRow() {
+        setData('items', [...data.items, { expense_item_id: '', planned_budget: '' }]);
+    }
+
+    function removeExpenseRow(rowIndex: number) {
+        setData(
+            'items',
+            data.items.filter((_, index) => index !== rowIndex),
+        );
+    }
+
+    function getAvailableExpenseItems(currentRowIndex: number) {
+        const selectedIds = new Set(
+            data.items
+                .filter((_, index) => index !== currentRowIndex)
+                .map((item) => item.expense_item_id)
+                .filter((id): id is number => typeof id === 'number'),
+        );
+
+        return allExpenseItems.filter(
+            (item) => !selectedIds.has(item.id) && !budgetedExpenseItemIds.has(item.id),
+        );
+    }
+
+    function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        clearErrors();
+
+        if (!data.branch_id) {
+            setError('branch_id', 'The branch field is required.');
+            return;
+        }
+
+        if (isHeadOffice && !data.department_id) {
+            setError('department_id', 'The department field is required when the selected branch is Head Office.');
+            return;
+        }
+
+        const savedItemIds = getSavedItemIds(data.items);
+        const itemsSnapshot = data.items;
+
+        post('/budget/expense-budget', {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const message = (page.props as { flash?: { message?: string } }).flash?.message;
+
+                if (message) {
+                    toast.success(message);
+                }
+
+                setBudgetedExpenseItemIds((prev) => new Set([...prev, ...savedItemIds]));
+                setData('items', getItemsAfterSave(itemsSnapshot, savedItemIds));
+                setPrevBudgets({});
+                setLoadingPrevBudget({});
+
+                fetchBudgetedExpenseItems(
+                    data.branch_id,
+                    data.department_id,
+                    data.month,
+                    data.year,
+                    isHeadOffice,
+                );
+            },
+        });
+    }
+
+    function handleCancel() {
+        router.visit(document.referrer || '/dashboard');
+    }
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Add Expense Budget" />
+
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+                <div className="flex items-center justify-end">
+                    <p className="text-sm text-muted-foreground">{ethiopianDate}</p>
+                </div>
+
+                <Card className="border shadow-sm">
+                    <CardHeader className="border-b pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                            <FileText className="size-5 text-muted-foreground" />
+                            Expense Budget Details
+                        </CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="pt-6">
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="month">
+                                        Month <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Select
+                                        value={String(data.month)}
+                                        onValueChange={(value) => setData('month', parseInt(value, 10))}
+                                    >
+                                        <SelectTrigger id="month">
+                                            <SelectValue placeholder="ወር ይምረጡ" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {ETHIOPIAN_FISCAL_MONTHS.map((month) => (
+                                                <SelectItem key={month.value} value={String(month.value)}>
+                                                    {month.am}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.month} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="year">
+                                        Year <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Input
+                                        id="year"
+                                        type="number"
+                                        min={1990}
+                                        max={2100}
+                                        value={data.year}
+                                        onChange={(event) =>
+                                            setData('year', parseInt(event.target.value, 10) || currentEthiopian.year)
+                                        }
+                                    />
+                                    <InputError message={errors.year} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>
+                                        Branch <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Popover open={openBranch} onOpenChange={setOpenBranch}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                className="w-full justify-between font-normal"
+                                            >
+                                                {selectedBranch ? selectedBranch.name : 'Select branch...'}
+                                                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Search branches..." />
+                                                <CommandList className="max-h-60">
+                                                    <CommandEmpty>No branches found.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {branches.map((branch) => (
+                                                            <CommandItem
+                                                                key={branch.id}
+                                                                value={branch.name}
+                                                                onSelect={() => handleBranchSelect(branch)}
+                                                            >
+                                                                <Check
+                                                                    className={cn(
+                                                                        'mr-2 size-4',
+                                                                        data.branch_id === String(branch.id) ? 'opacity-100' : 'opacity-0',
+                                                                    )}
+                                                                />
+                                                                {branch.name}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                    <InputError message={errors.branch_id} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>
+                                        Department <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Popover open={openDepartment} onOpenChange={setOpenDepartment}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                className="w-full justify-between font-normal"
+                                                disabled={!isHeadOffice}
+                                            >
+                                                {selectedDepartment ? selectedDepartment.name : 'Select Department'}
+                                                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Search departments..." />
+                                                <CommandList className="max-h-60">
+                                                    <CommandEmpty>No departments found.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {departments.map((department) => (
+                                                            <CommandItem
+                                                                key={department.id}
+                                                                value={department.name}
+                                                                onSelect={() => handleDepartmentSelect(department)}
+                                                            >
+                                                                <Check
+                                                                    className={cn(
+                                                                        'mr-2 size-4',
+                                                                        data.department_id === String(department.id) ? 'opacity-100' : 'opacity-0',
+                                                                    )}
+                                                                />
+                                                                {department.name}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                    <InputError message={errors.department_id} />
+                                </div>
+                            </div>
+
+                            <div className="overflow-hidden rounded-lg border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-slate-100/80 hover:bg-slate-100/80">
+                                            <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                                Expense Item
+                                            </TableHead>
+                                            <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                                Prev. Month Budget (ETB)
+                                            </TableHead>
+                                            <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                                Planned Budget (ETB)
+                                            </TableHead>
+                                            <TableHead className="w-20 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                                Action
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {data.items.map((row, rowIndex) => {
+                                            const expenseItem =
+                                                typeof row.expense_item_id === 'number'
+                                                    ? expenseItemMap.get(row.expense_item_id)
+                                                    : undefined;
+                                            const ExpenseIcon = expenseItem ? resolveExpenseIcon(expenseItem.icon) : null;
+                                            const availableItems = getAvailableExpenseItems(rowIndex);
+
+                                            return (
+                                                <TableRow key={rowIndex}>
+                                                    <TableCell className="align-middle">
+                                                        {expenseItem ? (
+                                                            <div className="flex items-center gap-2">
+                                                                {ExpenseIcon && <ExpenseIcon className="size-4 text-muted-foreground" />}
+                                                                <span>{expenseItem.name}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <Popover
+                                                                open={openExpenseRow === rowIndex}
+                                                                onOpenChange={(open) => setOpenExpenseRow(open ? rowIndex : null)}
+                                                            >
+                                                                <PopoverTrigger asChild>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        role="combobox"
+                                                                        className="w-full justify-between font-normal"
+                                                                    >
+                                                                        Select expense item
+                                                                        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                                                    <Command>
+                                                                        <CommandInput placeholder="Search expense items..." />
+                                                                        <CommandList className="max-h-60">
+                                                                            <CommandEmpty>No expense items found.</CommandEmpty>
+                                                                            <CommandGroup>
+                                                                                {availableItems.map((item) => (
+                                                                                    <CommandItem
+                                                                                        key={item.id}
+                                                                                        value={item.name}
+                                                                                        onSelect={() => handleExpenseItemSelect(rowIndex, item.id)}
+                                                                                    >
+                                                                                        <Check
+                                                                                            className={cn(
+                                                                                                'mr-2 size-4',
+                                                                                                row.expense_item_id === item.id ? 'opacity-100' : 'opacity-0',
+                                                                                            )}
+                                                                                        />
+                                                                                        {item.name}
+                                                                                    </CommandItem>
+                                                                                ))}
+                                                                            </CommandGroup>
+                                                                        </CommandList>
+                                                                    </Command>
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                        )}
+                                                        <InputError message={errors[`items.${rowIndex}.expense_item_id` as keyof typeof errors]} />
+                                                    </TableCell>
+
+                                                    <TableCell className="align-middle text-sm">
+                                                        {loadingPrevBudget[rowIndex] ? (
+                                                            <span className="text-muted-foreground">Loading...</span>
+                                                        ) : prevBudgets[rowIndex] !== undefined && prevBudgets[rowIndex] !== null ? (
+                                                            formatAmount(prevBudgets[rowIndex])
+                                                        ) : (
+                                                            <span className="italic text-muted-foreground">Not available</span>
+                                                        )}
+                                                    </TableCell>
+
+                                                    <TableCell className="align-middle">
+                                                        <Input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            placeholder="Enter budget"
+                                                            value={row.planned_budget}
+                                                            onChange={(event) =>
+                                                                handlePlannedBudgetChange(rowIndex, event.target.value)
+                                                            }
+                                                            className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                        />
+                                                        <InputError message={errors[`items.${rowIndex}.planned_budget` as keyof typeof errors]} />
+                                                    </TableCell>
+
+                                                    <TableCell className="align-middle">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                                                            onClick={() => removeExpenseRow(rowIndex)}
+                                                            disabled={data.items.length === 1}
+                                                        >
+                                                            <Trash2 className="size-4" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <InputError message={errors.items} />
+
+                            <Button
+                                type="button"
+                                className="bg-green-700 text-white hover:bg-green-800"
+                                onClick={addExpenseRow}
+                            >
+                                <Plus className="mr-1 size-4" />
+                                Add Expense Type
+                            </Button>
+
+                            <div className="flex flex-col gap-4 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="rounded-lg bg-sky-50 px-5 py-3">
+                                    <p className="text-sm text-muted-foreground">Total Budget</p>
+                                    <p className="text-xl font-bold text-foreground">
+                                        {formatAmount(totalBudget)} ETB
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <Button type="button" variant="outline" onClick={handleCancel}>
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit" className="bg-black text-white hover:bg-black/90" disabled={processing}>
+                                        <Save className="mr-2 size-4" />
+                                        Save Budget
+                                    </Button>
+                                </div>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
+        </AppLayout>
+    );
+}

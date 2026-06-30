@@ -49,6 +49,9 @@ import {
   Ticket,
   Phone,
   ExternalLink,
+  Wallet,
+  Plus,
+  List,
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -85,6 +88,9 @@ const iconMap = {
   Package,
   Sparkles,
   ExternalLink,
+  Wallet,
+  Plus,
+  List,
 } as const;
 
 const baseSections: NavSection[] = [
@@ -188,6 +194,21 @@ const baseSections: NavSection[] = [
     items: [
       { title: 'Categories', href: '/spare-part-categories', icon: FolderKey, permission: 'view spare part categories' },
       { title: 'Spare Parts', href: '/spare-parts', icon: Package, permission: 'view spare parts' },
+    ],
+  },
+  {
+    label: 'Budget',
+    icon: Wallet,
+    items: [],
+    groups: [
+      {
+        label: 'Expense Budget',
+        icon: FileText,
+        items: [
+          { title: 'Add Expense Budget', href: '/budget/expense-budget/create', icon: Plus, permission: 'manage expense budgets' },
+          { title: 'View Expense Budget', href: '/budget/expense-budget', icon: List, permission: 'view expense budgets' },
+        ],
+      },
     ],
   },
 ];
