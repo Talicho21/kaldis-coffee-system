@@ -588,7 +588,16 @@ export default function ExpenseBudgetIndex({
             </Dialog>
 
             <Dialog open={editingItem !== null} onOpenChange={(open) => !open && closeEditDialog()}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent
+                    className="overflow-visible sm:max-w-2xl"
+                    onInteractOutside={(event) => {
+                        const target = event.target as HTMLElement | null;
+
+                        if (target?.closest('[data-radix-popper-content-wrapper], [data-radix-popover-content]')) {
+                            event.preventDefault();
+                        }
+                    }}
+                >
                     <DialogHeader>
                         <DialogTitle>Edit Expense Budget Item</DialogTitle>
                         <DialogDescription>
@@ -657,6 +666,7 @@ export default function ExpenseBudgetIndex({
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent
+                                            portalled={false}
                                             className="z-[100] w-[var(--radix-popover-trigger-width)] p-0"
                                             align="start"
                                         >
@@ -669,8 +679,9 @@ export default function ExpenseBudgetIndex({
                                                             <CommandItem
                                                                 key={branch.id}
                                                                 value={branch.name}
-                                                                onMouseDown={(event) => event.preventDefault()}
+                                                                className="cursor-pointer"
                                                                 onSelect={() => handleEditBranchSelect(branch)}
+                                                                onClick={() => handleEditBranchSelect(branch)}
                                                             >
                                                                 <Check
                                                                     className={cn(
@@ -713,6 +724,7 @@ export default function ExpenseBudgetIndex({
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent
+                                            portalled={false}
                                             className="z-[100] w-[var(--radix-popover-trigger-width)] p-0"
                                             align="start"
                                         >
@@ -725,8 +737,9 @@ export default function ExpenseBudgetIndex({
                                                             <CommandItem
                                                                 key={department.id}
                                                                 value={department.name}
-                                                                onMouseDown={(event) => event.preventDefault()}
+                                                                className="cursor-pointer"
                                                                 onSelect={() => handleEditDepartmentSelect(department)}
+                                                                onClick={() => handleEditDepartmentSelect(department)}
                                                             >
                                                                 <Check
                                                                     className={cn(
@@ -763,6 +776,7 @@ export default function ExpenseBudgetIndex({
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent
+                                            portalled={false}
                                             className="z-[100] w-[var(--radix-popover-trigger-width)] p-0"
                                             align="start"
                                         >
@@ -775,8 +789,15 @@ export default function ExpenseBudgetIndex({
                                                             <CommandItem
                                                                 key={expenseItem.id}
                                                                 value={expenseItem.name}
-                                                                onMouseDown={(event) => event.preventDefault()}
+                                                                className="cursor-pointer"
                                                                 onSelect={() => {
+                                                                    setEditForm({
+                                                                        ...editForm,
+                                                                        expense_item_id: expenseItem.id,
+                                                                    });
+                                                                    setOpenEditExpenseItem(false);
+                                                                }}
+                                                                onClick={() => {
                                                                     setEditForm({
                                                                         ...editForm,
                                                                         expense_item_id: expenseItem.id,
