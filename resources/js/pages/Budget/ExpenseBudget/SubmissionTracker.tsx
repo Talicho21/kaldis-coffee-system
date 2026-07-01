@@ -3,12 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { ETHIOPIAN_FISCAL_MONTHS } from '@/lib/ethiopian-calendar';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { Check, Filter, X } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Budget', href: null },
@@ -38,17 +37,29 @@ type TrackerRow = {
     submissions: Record<string, boolean>;
 };
 
+type FiscalYearOption = {
+    id: number;
+    name: string;
+};
+
+type FiscalMonthOption = {
+    id: number;
+    name: string;
+    fiscal_year_id: number;
+};
+
 type SubmissionTrackerProps = {
     rows: TrackerRow[];
     frequentExpenseItems: FrequentExpenseItem[];
     branches: BranchOption[];
     departments: DepartmentOption[];
-    years: number[];
+    fiscalYears: FiscalYearOption[];
+    fiscalMonths: FiscalMonthOption[];
     request?: {
         branch_id?: string;
         department_id?: string;
-        month?: string;
-        year?: string;
+        fiscal_month_id?: string;
+        fiscal_year_id?: string;
     };
 };
 
@@ -75,8 +86,8 @@ function formatTrackerLabel(name: string, submittedCount: number): string {
 function buildFilterParams(
     selectedBranch: string,
     selectedDepartment: string,
-    selectedMonth: string,
-    selectedYear: string,
+    selectedFiscalMonth: string,
+    selectedFiscalYear: string,
 ): Record<string, string> {
     const params: Record<string, string> = {};
 
@@ -86,11 +97,11 @@ function buildFilterParams(
     if (selectedDepartment !== 'all') {
         params.department_id = selectedDepartment;
     }
-    if (selectedMonth !== 'all') {
-        params.month = selectedMonth;
+    if (selectedFiscalMonth !== 'all') {
+        params.fiscal_month_id = selectedFiscalMonth;
     }
-    if (selectedYear !== 'all') {
-        params.year = selectedYear;
+    if (selectedFiscalYear !== 'all') {
+        params.fiscal_year_id = selectedFiscalYear;
     }
 
     return params;
@@ -101,13 +112,22 @@ export default function ExpenseSubmissionTracker({
     frequentExpenseItems,
     branches,
     departments,
-    years,
+    fiscalYears,
+    fiscalMonths,
     request,
 }: SubmissionTrackerProps) {
     const [selectedBranch, setSelectedBranch] = useState<string>(request?.branch_id ?? 'all');
     const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
-    const [selectedMonth, setSelectedMonth] = useState<string>(request?.month ?? 'all');
-    const [selectedYear, setSelectedYear] = useState<string>(request?.year ?? 'all');
+    const [selectedFiscalMonth, setSelectedFiscalMonth] = useState<string>(request?.fiscal_month_id ?? 'all');
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>(request?.fiscal_year_id ?? 'all');
+
+    const filteredFiscalMonths = useMemo(() => {
+        if (selectedFiscalYear === 'all') {
+            return fiscalMonths;
+        }
+
+        return fiscalMonths.filter((month) => String(month.fiscal_year_id) === selectedFiscalYear);
+    }, [fiscalMonths, selectedFiscalYear]);
 
     const selectedBranchOption =
         selectedBranch === 'all' ? null : branches.find((branch) => branch.id.toString() === selectedBranch) ?? null;
@@ -118,15 +138,15 @@ export default function ExpenseSubmissionTracker({
         overrides: Partial<{
             branch: string;
             department: string;
-            month: string;
-            year: string;
+            fiscal_month: string;
+            fiscal_year: string;
         }> = {},
     ) {
         const params = buildFilterParams(
             overrides.branch ?? selectedBranch,
             overrides.department ?? selectedDepartment,
-            overrides.month ?? selectedMonth,
-            overrides.year ?? selectedYear,
+            overrides.fiscal_month ?? selectedFiscalMonth,
+            overrides.fiscal_year ?? selectedFiscalYear,
         );
 
         router.get('/budget/expense-budget/submission-tracker', params, { preserveState: true, replace: true });
@@ -143,29 +163,30 @@ export default function ExpenseSubmissionTracker({
         applyFilters({ department: value });
     }
 
-    function handleMonthChange(value: string) {
-        setSelectedMonth(value);
-        applyFilters({ month: value });
+    function handleFiscalMonthChange(value: string) {
+        setSelectedFiscalMonth(value);
+        applyFilters({ fiscal_month: value });
     }
 
-    function handleYearChange(value: string) {
-        setSelectedYear(value);
-        applyFilters({ year: value });
+    function handleFiscalYearChange(value: string) {
+        setSelectedFiscalYear(value);
+        setSelectedFiscalMonth('all');
+        applyFilters({ fiscal_year: value, fiscal_month: 'all' });
     }
 
     function clearFilters() {
         setSelectedBranch('all');
         setSelectedDepartment('all');
-        setSelectedMonth('all');
-        setSelectedYear('all');
+        setSelectedFiscalMonth('all');
+        setSelectedFiscalYear('all');
         router.get('/budget/expense-budget/submission-tracker', {}, { preserveState: true, replace: true });
     }
 
     const hasActiveFilters =
         selectedBranch !== 'all' ||
         selectedDepartment !== 'all' ||
-        selectedMonth !== 'all' ||
-        selectedYear !== 'all';
+        selectedFiscalMonth !== 'all' ||
+        selectedFiscalYear !== 'all';
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -210,28 +231,28 @@ export default function ExpenseSubmissionTracker({
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <Select value={selectedMonth} onValueChange={handleMonthChange}>
-                                    <SelectTrigger className="w-[160px]">
-                                        <SelectValue placeholder="All Months" />
+                                <Select value={selectedFiscalYear} onValueChange={handleFiscalYearChange}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="All Fiscal Years" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Months</SelectItem>
-                                        {ETHIOPIAN_FISCAL_MONTHS.map((month) => (
-                                            <SelectItem key={month.value} value={month.value.toString()}>
-                                                {month.am}
+                                        <SelectItem value="all">All Fiscal Years</SelectItem>
+                                        {fiscalYears.map((year) => (
+                                            <SelectItem key={year.id} value={year.id.toString()}>
+                                                {year.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <Select value={selectedYear} onValueChange={handleYearChange}>
-                                    <SelectTrigger className="w-[140px]">
-                                        <SelectValue placeholder="All Years" />
+                                <Select value={selectedFiscalMonth} onValueChange={handleFiscalMonthChange}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="All Fiscal Months" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Years</SelectItem>
-                                        {years.map((year) => (
-                                            <SelectItem key={year} value={year.toString()}>
-                                                {year}
+                                        <SelectItem value="all">All Fiscal Months</SelectItem>
+                                        {filteredFiscalMonths.map((month) => (
+                                            <SelectItem key={month.id} value={month.id.toString()}>
+                                                {month.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

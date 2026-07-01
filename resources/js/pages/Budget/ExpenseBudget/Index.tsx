@@ -19,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { usePermission } from '@/hooks/user-permissions';
 import AppLayout from '@/layouts/app-layout';
-import { ETHIOPIAN_FISCAL_MONTHS } from '@/lib/ethiopian-calendar';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import type { Pagination } from '@/types/pagination';
@@ -50,10 +49,23 @@ type ExpenseItemOption = {
     name: string;
 };
 
+type FiscalYearOption = {
+    id: number;
+    name: string;
+};
+
+type FiscalMonthOption = {
+    id: number;
+    name: string;
+    fiscal_year_id: number;
+};
+
 type ExpenseBudgetRow = {
     id: number;
-    month: number;
-    year: number;
+    fiscal_year_id: number;
+    fiscal_month_id: number;
+    fiscal_year: string | null;
+    fiscal_month: string | null;
     branch_id: number;
     department_id: number | null;
     branch: string | null;
@@ -67,8 +79,8 @@ type ExpenseBudgetRow = {
 };
 
 type EditFormState = {
-    month: number;
-    year: number;
+    fiscal_year_id: string;
+    fiscal_month_id: string;
     branch_id: string;
     department_id: string;
     expense_item_id: number;
@@ -85,13 +97,14 @@ type IndexProps = {
     branches: BranchOption[];
     departments: DepartmentOption[];
     expenseItems: ExpenseItemOption[];
-    years: number[];
+    fiscalYears: FiscalYearOption[];
+    fiscalMonths: FiscalMonthOption[];
     request?: {
         search?: string;
         branch_id?: string;
         department_id?: string;
-        month?: string;
-        year?: string;
+        fiscal_month_id?: string;
+        fiscal_year_id?: string;
     };
 };
 
@@ -150,8 +163,8 @@ function buildFilterParams(
     search: string,
     selectedBranch: string,
     selectedDepartment: string,
-    selectedMonth: string,
-    selectedYear: string,
+    selectedFiscalMonth: string,
+    selectedFiscalYear: string,
 ): Record<string, string> {
     const params: Record<string, string> = {};
 
@@ -164,11 +177,11 @@ function buildFilterParams(
     if (selectedDepartment !== 'all') {
         params.department_id = selectedDepartment;
     }
-    if (selectedMonth !== 'all') {
-        params.month = selectedMonth;
+    if (selectedFiscalMonth !== 'all') {
+        params.fiscal_month_id = selectedFiscalMonth;
     }
-    if (selectedYear !== 'all') {
-        params.year = selectedYear;
+    if (selectedFiscalYear !== 'all') {
+        params.fiscal_year_id = selectedFiscalYear;
     }
 
     return params;
@@ -191,7 +204,8 @@ export default function ExpenseBudgetIndex({
     branches,
     departments,
     expenseItems,
-    years,
+    fiscalYears,
+    fiscalMonths,
     request,
 }: IndexProps) {
     const { flash } = usePage<{ flash: { message?: string } }>().props;
@@ -200,8 +214,8 @@ export default function ExpenseBudgetIndex({
     const [search, setSearch] = useState<string>(request?.search ?? '');
     const [selectedBranch, setSelectedBranch] = useState<string>(request?.branch_id ?? 'all');
     const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
-    const [selectedMonth, setSelectedMonth] = useState<string>(request?.month ?? 'all');
-    const [selectedYear, setSelectedYear] = useState<string>(request?.year ?? 'all');
+    const [selectedFiscalMonth, setSelectedFiscalMonth] = useState<string>(request?.fiscal_month_id ?? 'all');
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>(request?.fiscal_year_id ?? 'all');
     const [deleteItemId, setDeleteItemId] = useState<number | null>(null);
     const [editingItem, setEditingItem] = useState<ExpenseBudgetRow | null>(null);
     const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -227,6 +241,22 @@ export default function ExpenseBudgetIndex({
 
     const canEditDepartment = isHeadOfficeBranch(editBranchOption);
 
+    const filteredFiscalMonths = useMemo(() => {
+        if (selectedFiscalYear === 'all') {
+            return fiscalMonths;
+        }
+
+        return fiscalMonths.filter((month) => String(month.fiscal_year_id) === selectedFiscalYear);
+    }, [fiscalMonths, selectedFiscalYear]);
+
+    const editFilteredFiscalMonths = useMemo(() => {
+        if (!editForm?.fiscal_year_id) {
+            return fiscalMonths;
+        }
+
+        return fiscalMonths.filter((month) => String(month.fiscal_year_id) === editForm.fiscal_year_id);
+    }, [editForm?.fiscal_year_id, fiscalMonths]);
+
     const selectedEditExpenseItem = useMemo(
         () => expenseItems.find((item) => item.id === editForm?.expense_item_id) ?? null,
         [editForm?.expense_item_id, expenseItems],
@@ -242,11 +272,11 @@ export default function ExpenseBudgetIndex({
         debounce((value: string) => {
             router.get(
                 '/budget/expense-budget',
-                buildFilterParams(value, selectedBranch, selectedDepartment, selectedMonth, selectedYear),
+                buildFilterParams(value, selectedBranch, selectedDepartment, selectedFiscalMonth, selectedFiscalYear),
                 { preserveState: true, replace: true },
             );
         }, 500),
-        [selectedBranch, selectedDepartment, selectedMonth, selectedYear],
+        [selectedBranch, selectedDepartment, selectedFiscalMonth, selectedFiscalYear],
     );
 
     function handleSearchChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -260,16 +290,16 @@ export default function ExpenseBudgetIndex({
             search: string;
             branch: string;
             department: string;
-            month: string;
-            year: string;
+            fiscal_month: string;
+            fiscal_year: string;
         }> = {},
     ) {
         const params = buildFilterParams(
             overrides.search ?? search,
             overrides.branch ?? selectedBranch,
             overrides.department ?? selectedDepartment,
-            overrides.month ?? selectedMonth,
-            overrides.year ?? selectedYear,
+            overrides.fiscal_month ?? selectedFiscalMonth,
+            overrides.fiscal_year ?? selectedFiscalYear,
         );
 
         router.get('/budget/expense-budget', params, { preserveState: true, replace: true });
@@ -286,14 +316,15 @@ export default function ExpenseBudgetIndex({
         applyFilters({ department: value });
     }
 
-    function handleMonthChange(value: string) {
-        setSelectedMonth(value);
-        applyFilters({ month: value });
+    function handleFiscalMonthChange(value: string) {
+        setSelectedFiscalMonth(value);
+        applyFilters({ fiscal_month: value });
     }
 
-    function handleYearChange(value: string) {
-        setSelectedYear(value);
-        applyFilters({ year: value });
+    function handleFiscalYearChange(value: string) {
+        setSelectedFiscalYear(value);
+        setSelectedFiscalMonth('all');
+        applyFilters({ fiscal_year: value, fiscal_month: 'all' });
     }
 
     function clearFilters() {
@@ -301,8 +332,8 @@ export default function ExpenseBudgetIndex({
         setSearch('');
         setSelectedBranch('all');
         setSelectedDepartment('all');
-        setSelectedMonth('all');
-        setSelectedYear('all');
+        setSelectedFiscalMonth('all');
+        setSelectedFiscalYear('all');
         router.get('/budget/expense-budget', {}, { preserveState: true, replace: true });
     }
 
@@ -319,8 +350,8 @@ export default function ExpenseBudgetIndex({
     function openEditDialog(item: ExpenseBudgetRow) {
         setEditingItem(item);
         setEditForm({
-            month: item.month,
-            year: item.year,
+            fiscal_year_id: String(item.fiscal_year_id),
+            fiscal_month_id: String(item.fiscal_month_id),
             branch_id: String(item.branch_id),
             department_id: item.department_id ? String(item.department_id) : '',
             expense_item_id: item.expense_item_id,
@@ -390,8 +421,8 @@ export default function ExpenseBudgetIndex({
         router.patch(
             `/budget/expense-budget/items/${editingItem.id}`,
             {
-                month: editForm.month,
-                year: editForm.year,
+                fiscal_year_id: editForm.fiscal_year_id,
+                fiscal_month_id: editForm.fiscal_month_id,
                 branch_id: editForm.branch_id,
                 department_id: canEditDepartment ? editForm.department_id : null,
                 expense_item_id: editForm.expense_item_id,
@@ -410,8 +441,8 @@ export default function ExpenseBudgetIndex({
         search !== '' ||
         selectedBranch !== 'all' ||
         selectedDepartment !== 'all' ||
-        selectedMonth !== 'all' ||
-        selectedYear !== 'all';
+        selectedFiscalMonth !== 'all' ||
+        selectedFiscalYear !== 'all';
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -462,28 +493,28 @@ export default function ExpenseBudgetIndex({
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <Select value={selectedMonth} onValueChange={handleMonthChange}>
-                                    <SelectTrigger className="w-[160px]">
-                                        <SelectValue placeholder="All Months" />
+                                <Select value={selectedFiscalYear} onValueChange={handleFiscalYearChange}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="All Fiscal Years" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Months</SelectItem>
-                                        {ETHIOPIAN_FISCAL_MONTHS.map((month) => (
-                                            <SelectItem key={month.value} value={month.value.toString()}>
-                                                {month.am}
+                                        <SelectItem value="all">All Fiscal Years</SelectItem>
+                                        {fiscalYears.map((year) => (
+                                            <SelectItem key={year.id} value={year.id.toString()}>
+                                                {year.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <Select value={selectedYear} onValueChange={handleYearChange}>
-                                    <SelectTrigger className="w-[140px]">
-                                        <SelectValue placeholder="All Years" />
+                                <Select value={selectedFiscalMonth} onValueChange={handleFiscalMonthChange}>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="All Fiscal Months" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Years</SelectItem>
-                                        {years.map((year) => (
-                                            <SelectItem key={year} value={year.toString()}>
-                                                {year}
+                                        <SelectItem value="all">All Fiscal Months</SelectItem>
+                                        {filteredFiscalMonths.map((month) => (
+                                            <SelectItem key={month.id} value={month.id.toString()}>
+                                                {month.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -502,8 +533,8 @@ export default function ExpenseBudgetIndex({
                         <Table>
                             <TableHeader className="bg-slate-500 dark:bg-slate-700">
                                 <TableRow>
-                                    <TableHead className="font-bold text-white">Month</TableHead>
-                                    <TableHead className="font-bold text-white">Year</TableHead>
+                                    <TableHead className="font-bold text-white">Fiscal Month</TableHead>
+                                    <TableHead className="font-bold text-white">Fiscal Year</TableHead>
                                     <TableHead className="font-bold text-white">Branch</TableHead>
                                     <TableHead className="font-bold text-white">Department</TableHead>
                                     <TableHead className="font-bold text-white">Expense Item</TableHead>
@@ -517,8 +548,8 @@ export default function ExpenseBudgetIndex({
                             <TableBody>
                                 {items.data.map((item) => (
                                     <TableRow key={item.id} className="odd:bg-slate-100 dark:odd:bg-slate-800">
-                                        <TableCell>{ETHIOPIAN_FISCAL_MONTHS.find((month) => month.value === item.month)?.am ?? item.month}</TableCell>
-                                        <TableCell>{item.year}</TableCell>
+                                        <TableCell>{item.fiscal_month ?? 'N/A'}</TableCell>
+                                        <TableCell>{item.fiscal_year ?? 'N/A'}</TableCell>
                                         <TableCell>{item.branch ?? 'N/A'}</TableCell>
                                         <TableCell>{item.department ?? '-'}</TableCell>
                                         <TableCell>{item.expense_item ?? 'N/A'}</TableCell>
@@ -608,22 +639,26 @@ export default function ExpenseBudgetIndex({
                         <form className="space-y-4" onSubmit={submitEditItem}>
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label htmlFor="edit-month">
-                                        Month <span className="text-red-500">*</span>
+                                    <Label htmlFor="edit-fiscal-year">
+                                        Fiscal Year <span className="text-red-500">*</span>
                                     </Label>
                                     <Select
-                                        value={String(editForm.month)}
+                                        value={editForm.fiscal_year_id}
                                         onValueChange={(value) =>
-                                            setEditForm({ ...editForm, month: parseInt(value, 10) })
+                                            setEditForm({
+                                                ...editForm,
+                                                fiscal_year_id: value,
+                                                fiscal_month_id: '',
+                                            })
                                         }
                                     >
-                                        <SelectTrigger id="edit-month">
-                                            <SelectValue placeholder="Select month" />
+                                        <SelectTrigger id="edit-fiscal-year">
+                                            <SelectValue placeholder="Select fiscal year" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {ETHIOPIAN_FISCAL_MONTHS.map((month) => (
-                                                <SelectItem key={month.value} value={String(month.value)}>
-                                                    {month.am}
+                                            {fiscalYears.map((year) => (
+                                                <SelectItem key={year.id} value={String(year.id)}>
+                                                    {year.name}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -631,22 +666,33 @@ export default function ExpenseBudgetIndex({
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="edit-year">
-                                        Year <span className="text-red-500">*</span>
+                                    <Label htmlFor="edit-fiscal-month">
+                                        Fiscal Month <span className="text-red-500">*</span>
                                     </Label>
-                                    <Input
-                                        id="edit-year"
-                                        type="number"
-                                        min={1990}
-                                        max={2100}
-                                        value={editForm.year}
-                                        onChange={(event) =>
-                                            setEditForm({
-                                                ...editForm,
-                                                year: parseInt(event.target.value, 10) || editForm.year,
-                                            })
+                                    <Select
+                                        value={editForm.fiscal_month_id}
+                                        onValueChange={(value) =>
+                                            setEditForm({ ...editForm, fiscal_month_id: value })
                                         }
-                                    />
+                                        disabled={!editForm.fiscal_year_id}
+                                    >
+                                        <SelectTrigger id="edit-fiscal-month">
+                                            <SelectValue
+                                                placeholder={
+                                                    editForm.fiscal_year_id
+                                                        ? 'Select fiscal month'
+                                                        : 'Select fiscal year first'
+                                                }
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {editFilteredFiscalMonths.map((month) => (
+                                                <SelectItem key={month.id} value={String(month.id)}>
+                                                    {month.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
 
                                 <div className="space-y-2">

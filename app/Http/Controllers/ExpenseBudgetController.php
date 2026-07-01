@@ -7,10 +7,13 @@ use App\Models\Department;
 use App\Models\ExpenseBudget;
 use App\Models\ExpenseBudgetItem;
 use App\Models\ExpenseItem;
+use App\Models\FiscalMonth;
+use App\Models\FiscalYear;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -26,6 +29,8 @@ class ExpenseBudgetController extends Controller
                 'expenseBudget.branch',
                 'expenseBudget.department',
                 'expenseBudget.creator',
+                'expenseBudget.fiscalYear',
+                'expenseBudget.fiscalMonth',
                 'expenseItem',
             ])
             ->whereNotNull('planned_budget')
@@ -49,15 +54,15 @@ class ExpenseBudgetController extends Controller
             });
         }
 
-        if ($month = request('month')) {
-            $query->whereHas('expenseBudget', function ($q) use ($month) {
-                $q->where('month', $month);
+        if ($fiscalMonthId = request('fiscal_month_id')) {
+            $query->whereHas('expenseBudget', function ($q) use ($fiscalMonthId) {
+                $q->where('fiscal_month_id', $fiscalMonthId);
             });
         }
 
-        if ($year = request('year')) {
-            $query->whereHas('expenseBudget', function ($q) use ($year) {
-                $q->where('year', $year);
+        if ($fiscalYearId = request('fiscal_year_id')) {
+            $query->whereHas('expenseBudget', function ($q) use ($fiscalYearId) {
+                $q->where('fiscal_year_id', $fiscalYearId);
             });
         }
 
@@ -70,27 +75,25 @@ class ExpenseBudgetController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $years = ExpenseBudget::query()
-            ->distinct()
-            ->orderByDesc('year')
-            ->pluck('year')
-            ->values();
-
         $items = $query
             ->join('expense_budgets', function ($join) {
                 $join->on('expense_budget_items.expense_budget_id', '=', 'expense_budgets.id')
                     ->whereNull('expense_budgets.deleted_at');
             })
-            ->orderByDesc('expense_budgets.year')
-            ->orderByDesc('expense_budgets.month')
+            ->leftJoin('fiscal_years', 'expense_budgets.fiscal_year_id', '=', 'fiscal_years.id')
+            ->leftJoin('fiscal_months', 'expense_budgets.fiscal_month_id', '=', 'fiscal_months.id')
+            ->orderByDesc('fiscal_years.gregorian_start_date')
+            ->orderByDesc('fiscal_months.efy_month_number')
             ->orderByDesc('expense_budget_items.created_at')
             ->select('expense_budget_items.*')
             ->paginate(5)
             ->withQueryString()
             ->through(fn (ExpenseBudgetItem $item) => [
                 'id' => $item->id,
-                'month' => $item->expenseBudget->month,
-                'year' => $item->expenseBudget->year,
+                'fiscal_year_id' => $item->expenseBudget->fiscal_year_id,
+                'fiscal_month_id' => $item->expenseBudget->fiscal_month_id,
+                'fiscal_year' => $item->expenseBudget->fiscalYear?->name,
+                'fiscal_month' => $item->expenseBudget->fiscalMonth?->name,
                 'branch_id' => $item->expenseBudget->branch_id,
                 'department_id' => $item->expenseBudget->department_id,
                 'branch' => $item->expenseBudget->branch?->name,
@@ -117,8 +120,9 @@ class ExpenseBudgetController extends Controller
             'branches' => $branches,
             'departments' => $departments,
             'expenseItems' => $expenseItems,
-            'years' => $years,
-            'request' => request()->only(['search', 'branch_id', 'department_id', 'month', 'year']),
+            'fiscalYears' => $this->fiscalYearOptions(),
+            'fiscalMonths' => $this->fiscalMonthOptions(),
+            'request' => request()->only(['search', 'branch_id', 'department_id', 'fiscal_month_id', 'fiscal_year_id']),
         ]);
     }
 
@@ -135,12 +139,6 @@ class ExpenseBudgetController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $years = ExpenseBudget::query()
-            ->distinct()
-            ->orderByDesc('year')
-            ->pluck('year')
-            ->values();
-
         $frequentExpenseItems = ExpenseItem::query()
             ->where('frequent_expense', true)
             ->orderBy('expense_type')
@@ -152,8 +150,8 @@ class ExpenseBudgetController extends Controller
             ->values();
 
         $submissionLookup = $this->buildSubmissionLookup(
-            request('month'),
-            request('year'),
+            request('fiscal_month_id'),
+            request('fiscal_year_id'),
         );
 
         $trackerBranches = $branches->when(
@@ -193,8 +191,9 @@ class ExpenseBudgetController extends Controller
             'frequentExpenseItems' => $frequentExpenseItems,
             'branches' => $branches,
             'departments' => $departments,
-            'years' => $years,
-            'request' => request()->only(['branch_id', 'department_id', 'month', 'year']),
+            'fiscalYears' => $this->fiscalYearOptions(),
+            'fiscalMonths' => $this->fiscalMonthOptions(),
+            'request' => request()->only(['branch_id', 'department_id', 'fiscal_month_id', 'fiscal_year_id']),
         ]);
     }
 
@@ -236,11 +235,17 @@ class ExpenseBudgetController extends Controller
             ->map($mapExpenseItem)
             ->values();
 
+        $defaultPeriod = $this->resolveDefaultFiscalPeriod();
+
         return Inertia::render('Budget/ExpenseBudget/Create', [
             'branches' => $branches,
             'departments' => $departments,
             'frequentExpenseItems' => $frequentExpenseItems,
             'otherExpenseItems' => $otherExpenseItems,
+            'fiscalYears' => $this->fiscalYearOptions(),
+            'fiscalMonths' => $this->fiscalMonthOptions(),
+            'defaultFiscalYearId' => $defaultPeriod['fiscal_year_id'],
+            'defaultFiscalMonthId' => $defaultPeriod['fiscal_month_id'],
         ]);
     }
 
@@ -249,8 +254,14 @@ class ExpenseBudgetController extends Controller
         abort_unless(auth()->user()->can('manage expense budgets'), 403);
 
         $validated = $request->validate([
-            'month' => ['required', 'integer', 'min:1', 'max:12'],
-            'year' => ['required', 'integer', 'min:1990', 'max:2100'],
+            'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
+            'fiscal_month_id' => [
+                'required',
+                'integer',
+                Rule::exists('fiscal_months', 'id')->where(
+                    fn ($query) => $query->where('fiscal_year_id', $request->input('fiscal_year_id')),
+                ),
+            ],
             'branch_id' => ['required', 'exists:branches,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'items' => ['nullable', 'array'],
@@ -288,8 +299,8 @@ class ExpenseBudgetController extends Controller
                 $departmentId = $isHeadOffice ? ($validated['department_id'] ?? null) : null;
 
                 $query
-                    ->where('month', $validated['month'])
-                    ->where('year', $validated['year'])
+                    ->where('fiscal_year_id', $validated['fiscal_year_id'])
+                    ->where('fiscal_month_id', $validated['fiscal_month_id'])
                     ->where('branch_id', $validated['branch_id'])
                     ->when(
                         $departmentId,
@@ -318,8 +329,8 @@ class ExpenseBudgetController extends Controller
 
         DB::transaction(function () use ($validated, $itemsToSave, $newBudgetAmount) {
             $budget = $this->findExpenseBudgetForScope(
-                (int) $validated['month'],
-                (int) $validated['year'],
+                (int) $validated['fiscal_year_id'],
+                (int) $validated['fiscal_month_id'],
                 (int) $validated['branch_id'],
                 $validated['department_id'] ? (int) $validated['department_id'] : null,
             );
@@ -330,8 +341,8 @@ class ExpenseBudgetController extends Controller
                 ]);
             } else {
                 $budget = ExpenseBudget::create([
-                    'month' => $validated['month'],
-                    'year' => $validated['year'],
+                    'fiscal_year_id' => $validated['fiscal_year_id'],
+                    'fiscal_month_id' => $validated['fiscal_month_id'],
                     'branch_id' => $validated['branch_id'],
                     'department_id' => $validated['department_id'],
                     'budget_amount' => $newBudgetAmount,
@@ -387,8 +398,14 @@ class ExpenseBudgetController extends Controller
         abort_unless(auth()->user()->can('manage expense budgets'), 403);
 
         $validated = $request->validate([
-            'month' => ['required', 'integer', 'min:1', 'max:12'],
-            'year' => ['required', 'integer', 'min:1990', 'max:2100'],
+            'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
+            'fiscal_month_id' => [
+                'required',
+                'integer',
+                Rule::exists('fiscal_months', 'id')->where(
+                    fn ($query) => $query->where('fiscal_year_id', $request->input('fiscal_year_id')),
+                ),
+            ],
             'branch_id' => ['required', 'exists:branches,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'expense_item_id' => ['required', 'exists:expenses,expense_parent_acc_code'],
@@ -417,8 +434,8 @@ class ExpenseBudgetController extends Controller
             ->where('expense_item_id', $validated['expense_item_id'])
             ->whereHas('expenseBudget', function ($query) use ($validated, $departmentId) {
                 $query
-                    ->where('month', $validated['month'])
-                    ->where('year', $validated['year'])
+                    ->where('fiscal_year_id', $validated['fiscal_year_id'])
+                    ->where('fiscal_month_id', $validated['fiscal_month_id'])
                     ->where('branch_id', $validated['branch_id'])
                     ->when(
                         $departmentId,
@@ -439,16 +456,16 @@ class ExpenseBudgetController extends Controller
             $oldPlannedBudget = (float) $expenseBudgetItem->planned_budget;
 
             $targetBudget = $this->findExpenseBudgetForScope(
-                (int) $validated['month'],
-                (int) $validated['year'],
+                (int) $validated['fiscal_year_id'],
+                (int) $validated['fiscal_month_id'],
                 (int) $validated['branch_id'],
                 $departmentId,
             );
 
             if (! $targetBudget) {
                 $targetBudget = ExpenseBudget::create([
-                    'month' => $validated['month'],
-                    'year' => $validated['year'],
+                    'fiscal_year_id' => $validated['fiscal_year_id'],
+                    'fiscal_month_id' => $validated['fiscal_month_id'],
                     'branch_id' => $validated['branch_id'],
                     'department_id' => $validated['department_id'],
                     'budget_amount' => 0,
@@ -497,8 +514,8 @@ class ExpenseBudgetController extends Controller
             'expense_item_id' => ['required', 'exists:expenses,expense_parent_acc_code'],
             'branch_id' => ['required', 'exists:branches,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
-            'month' => ['required', 'integer', 'min:1', 'max:12'],
-            'year' => ['required', 'integer', 'min:1990', 'max:2100'],
+            'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
+            'fiscal_month_id' => ['required', 'integer', 'exists:fiscal_months,id'],
         ]);
 
         $branch = Branch::findOrFail($validated['branch_id']);
@@ -506,17 +523,20 @@ class ExpenseBudgetController extends Controller
             ? ($validated['department_id'] ?? null)
             : null;
 
-        [$prevMonth, $prevYear] = $this->previousMonthYear(
-            (int) $validated['month'],
-            (int) $validated['year']
-        );
+        $previousFiscalMonth = $this->findPreviousFiscalMonth((int) $validated['fiscal_month_id']);
+
+        if (! $previousFiscalMonth) {
+            return response()->json([
+                'prev_month_budget' => null,
+            ]);
+        }
 
         $prevBudgetItem = ExpenseBudgetItem::query()
             ->where('expense_item_id', $validated['expense_item_id'])
-            ->whereHas('expenseBudget', function ($query) use ($validated, $departmentId, $prevMonth, $prevYear) {
+            ->whereHas('expenseBudget', function ($query) use ($validated, $departmentId, $previousFiscalMonth) {
                 $query
-                    ->where('month', $prevMonth)
-                    ->where('year', $prevYear)
+                    ->where('fiscal_year_id', $previousFiscalMonth->fiscal_year_id)
+                    ->where('fiscal_month_id', $previousFiscalMonth->id)
                     ->where('branch_id', $validated['branch_id'])
                     ->when(
                         $departmentId,
@@ -538,8 +558,8 @@ class ExpenseBudgetController extends Controller
         $validated = $request->validate([
             'branch_id' => ['required', 'exists:branches,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
-            'month' => ['required', 'integer', 'min:1', 'max:12'],
-            'year' => ['required', 'integer', 'min:1990', 'max:2100'],
+            'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
+            'fiscal_month_id' => ['required', 'integer', 'exists:fiscal_months,id'],
         ]);
 
         $branch = Branch::findOrFail($validated['branch_id']);
@@ -551,8 +571,8 @@ class ExpenseBudgetController extends Controller
             ->whereNotNull('planned_budget')
             ->whereHas('expenseBudget', function ($query) use ($validated, $departmentId) {
                 $query
-                    ->where('month', $validated['month'])
-                    ->where('year', $validated['year'])
+                    ->where('fiscal_year_id', $validated['fiscal_year_id'])
+                    ->where('fiscal_month_id', $validated['fiscal_month_id'])
                     ->where('branch_id', $validated['branch_id'])
                     ->when(
                         $departmentId,
@@ -597,17 +617,17 @@ class ExpenseBudgetController extends Controller
     /**
      * @return array<string, bool>
      */
-    private function buildSubmissionLookup(?string $month, ?string $year): array
+    private function buildSubmissionLookup(?string $fiscalMonthId, ?string $fiscalYearId): array
     {
         $items = ExpenseBudgetItem::query()
             ->whereNotNull('planned_budget')
-            ->whereHas('expenseBudget', function ($query) use ($month, $year) {
-                if ($month && $month !== 'all') {
-                    $query->where('month', $month);
+            ->whereHas('expenseBudget', function ($query) use ($fiscalMonthId, $fiscalYearId) {
+                if ($fiscalMonthId && $fiscalMonthId !== 'all') {
+                    $query->where('fiscal_month_id', $fiscalMonthId);
                 }
 
-                if ($year && $year !== 'all') {
-                    $query->where('year', $year);
+                if ($fiscalYearId && $fiscalYearId !== 'all') {
+                    $query->where('fiscal_year_id', $fiscalYearId);
                 }
             })
             ->with(['expenseBudget:id,branch_id,department_id'])
@@ -631,14 +651,14 @@ class ExpenseBudgetController extends Controller
     }
 
     private function findExpenseBudgetForScope(
-        int $month,
-        int $year,
+        int $fiscalYearId,
+        int $fiscalMonthId,
         int $branchId,
         ?int $departmentId,
     ): ?ExpenseBudget {
         return ExpenseBudget::query()
-            ->where('month', $month)
-            ->where('year', $year)
+            ->where('fiscal_year_id', $fiscalYearId)
+            ->where('fiscal_month_id', $fiscalMonthId)
             ->where('branch_id', $branchId)
             ->when(
                 $departmentId,
@@ -648,6 +668,119 @@ class ExpenseBudgetController extends Controller
             ->first();
     }
 
+    private function findPreviousFiscalMonth(int $fiscalMonthId): ?FiscalMonth
+    {
+        $current = FiscalMonth::query()->find($fiscalMonthId);
+
+        if (! $current) {
+            return null;
+        }
+
+        $previousInYear = FiscalMonth::query()
+            ->where('fiscal_year_id', $current->fiscal_year_id)
+            ->where('efy_month_number', $current->efy_month_number - 1)
+            ->first();
+
+        if ($previousInYear) {
+            return $previousInYear;
+        }
+
+        $currentYear = FiscalYear::query()->find($current->fiscal_year_id);
+
+        if (! $currentYear) {
+            return null;
+        }
+
+        $previousYear = FiscalYear::query()
+            ->where('gregorian_end_date', '<', $currentYear->gregorian_start_date)
+            ->orderByDesc('gregorian_end_date')
+            ->first();
+
+        if (! $previousYear) {
+            return null;
+        }
+
+        return FiscalMonth::query()
+            ->where('fiscal_year_id', $previousYear->id)
+            ->orderByDesc('efy_month_number')
+            ->first();
+    }
+
+    /**
+     * @return array{fiscal_year_id: int|null, fiscal_month_id: int|null}
+     */
+    private function resolveDefaultFiscalPeriod(): array
+    {
+        $today = now()->toDateString();
+
+        $currentMonth = FiscalMonth::query()
+            ->whereDate('gregorian_start_date', '<=', $today)
+            ->whereDate('gregorian_end_date', '>=', $today)
+            ->first();
+
+        if ($currentMonth) {
+            return [
+                'fiscal_year_id' => $currentMonth->fiscal_year_id,
+                'fiscal_month_id' => $currentMonth->id,
+            ];
+        }
+
+        $activeYear = FiscalYear::query()
+            ->where('is_active', true)
+            ->orderByDesc('gregorian_start_date')
+            ->first()
+            ?? FiscalYear::query()->orderByDesc('gregorian_start_date')->first();
+
+        if (! $activeYear) {
+            return [
+                'fiscal_year_id' => null,
+                'fiscal_month_id' => null,
+            ];
+        }
+
+        $latestMonth = FiscalMonth::query()
+            ->where('fiscal_year_id', $activeYear->id)
+            ->orderByDesc('efy_month_number')
+            ->first();
+
+        return [
+            'fiscal_year_id' => $activeYear->id,
+            'fiscal_month_id' => $latestMonth?->id,
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{id: int, name: string}>
+     */
+    private function fiscalYearOptions()
+    {
+        return FiscalYear::query()
+            ->orderByDesc('gregorian_start_date')
+            ->get(['id', 'name'])
+            ->map(fn (FiscalYear $year) => [
+                'id' => $year->id,
+                'name' => $year->name,
+            ])
+            ->values();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array{id: int, name: string, fiscal_year_id: int}>
+     */
+    private function fiscalMonthOptions()
+    {
+        return FiscalMonth::query()
+            ->orderBy('fiscal_year_id')
+            ->orderBy('efy_month_number')
+            ->get(['id', 'name', 'fiscal_year_id'])
+            ->map(fn (FiscalMonth $month) => [
+                'id' => $month->id,
+                'name' => $month->name,
+                'fiscal_year_id' => $month->fiscal_year_id,
+            ])
+            ->values();
+    }
+
     private function isHeadOfficeBranch(Branch $branch): bool
     {
         if (strcasecmp($branch->branch_code ?? '', 'HO') === 0) {
@@ -655,17 +788,5 @@ class ExpenseBudgetController extends Controller
         }
 
         return str_contains($branch->name, 'Head Office');
-    }
-
-    /**
-     * @return array{0: int, 1: int}
-     */
-    private function previousMonthYear(int $month, int $year): array
-    {
-        if ($month === 1) {
-            return [12, $year - 1];
-        }
-
-        return [$month - 1, $year];
     }
 }

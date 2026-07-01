@@ -14,8 +14,8 @@ class ExpenseBudget extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'month',
-        'year',
+        'fiscal_year_id',
+        'fiscal_month_id',
         'branch_id',
         'department_id',
         'budget_amount',
@@ -23,14 +23,24 @@ class ExpenseBudget extends Model
     ];
 
     protected $casts = [
-        'month' => 'integer',
-        'year' => 'integer',
+        'fiscal_year_id' => 'integer',
+        'fiscal_month_id' => 'integer',
         'budget_amount' => 'decimal:2',
     ];
 
     public function items(): HasMany
     {
         return $this->hasMany(ExpenseBudgetItem::class);
+    }
+
+    public function fiscalYear(): BelongsTo
+    {
+        return $this->belongsTo(FiscalYear::class);
+    }
+
+    public function fiscalMonth(): BelongsTo
+    {
+        return $this->belongsTo(FiscalMonth::class);
     }
 
     public function branch(): BelongsTo

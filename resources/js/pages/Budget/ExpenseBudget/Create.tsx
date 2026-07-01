@@ -21,7 +21,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { ETHIOPIAN_FISCAL_MONTHS, formatEthiopianDate, gregorianToEthiopian } from '@/lib/ethiopian-calendar';
+import { formatEthiopianDate } from '@/lib/ethiopian-calendar';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router, useForm } from '@inertiajs/react';
@@ -76,11 +76,26 @@ type BudgetItemRow = {
     planned_budget: string;
 };
 
+type FiscalYearOption = {
+    id: number;
+    name: string;
+};
+
+type FiscalMonthOption = {
+    id: number;
+    name: string;
+    fiscal_year_id: number;
+};
+
 type CreateProps = {
     branches: BranchOption[];
     departments: DepartmentOption[];
     frequentExpenseItems: ExpenseItemOption[];
     otherExpenseItems: ExpenseItemOption[];
+    fiscalYears: FiscalYearOption[];
+    fiscalMonths: FiscalMonthOption[];
+    defaultFiscalYearId: number | null;
+    defaultFiscalMonthId: number | null;
 };
 
 function isHeadOfficeBranch(branch: BranchOption | null): boolean {
@@ -186,14 +201,17 @@ export default function CreateExpenseBudget({
     departments,
     frequentExpenseItems,
     otherExpenseItems,
+    fiscalYears,
+    fiscalMonths,
+    defaultFiscalYearId,
+    defaultFiscalMonthId,
 }: CreateProps) {
     const now = new Date();
-    const currentEthiopian = gregorianToEthiopian(now);
     const ethiopianDate = formatEthiopianDate(now);
 
     const { data, setData, post, processing, errors, transform, setError, clearErrors } = useForm({
-        month: currentEthiopian.month,
-        year: currentEthiopian.year,
+        fiscal_year_id: defaultFiscalYearId ? String(defaultFiscalYearId) : '',
+        fiscal_month_id: defaultFiscalMonthId ? String(defaultFiscalMonthId) : '',
         branch_id: '',
         department_id: '',
         items: buildInitialItems(frequentExpenseItems),
@@ -222,6 +240,14 @@ export default function CreateExpenseBudget({
 
     const isHeadOffice = isHeadOfficeBranch(selectedBranch);
 
+    const filteredFiscalMonths = useMemo(() => {
+        if (!data.fiscal_year_id) {
+            return fiscalMonths;
+        }
+
+        return fiscalMonths.filter((month) => String(month.fiscal_year_id) === data.fiscal_year_id);
+    }, [data.fiscal_year_id, fiscalMonths]);
+
     const totalBudget = useMemo(
         () =>
             data.items.reduce((sum, item) => {
@@ -232,8 +258,16 @@ export default function CreateExpenseBudget({
     );
 
     const fetchPrevBudget = useCallback(
-        async (rowIndex: number, expenseItemId: number, branchId: string, departmentId: string, month: number, year: number, headOffice: boolean) => {
-            if (!branchId || !expenseItemId) {
+        async (
+            rowIndex: number,
+            expenseItemId: number,
+            branchId: string,
+            departmentId: string,
+            fiscalYearId: string,
+            fiscalMonthId: string,
+            headOffice: boolean,
+        ) => {
+            if (!branchId || !expenseItemId || !fiscalYearId || !fiscalMonthId) {
                 return;
             }
 
@@ -247,8 +281,8 @@ export default function CreateExpenseBudget({
                 const params = new URLSearchParams({
                     expense_item_id: String(expenseItemId),
                     branch_id: branchId,
-                    month: String(month),
-                    year: String(year),
+                    fiscal_year_id: fiscalYearId,
+                    fiscal_month_id: fiscalMonthId,
                 });
 
                 if (headOffice && departmentId) {
@@ -270,8 +304,14 @@ export default function CreateExpenseBudget({
     );
 
     const fetchBudgetedExpenseItems = useCallback(
-        async (branchId: string, departmentId: string, month: number, year: number, headOffice: boolean) => {
-            if (!branchId) {
+        async (
+            branchId: string,
+            departmentId: string,
+            fiscalYearId: string,
+            fiscalMonthId: string,
+            headOffice: boolean,
+        ) => {
+            if (!branchId || !fiscalYearId || !fiscalMonthId) {
                 setBudgetedExpenseItemIds(new Set());
                 return;
             }
@@ -283,8 +323,8 @@ export default function CreateExpenseBudget({
 
             const params = new URLSearchParams({
                 branch_id: branchId,
-                month: String(month),
-                year: String(year),
+                fiscal_year_id: fiscalYearId,
+                fiscal_month_id: fiscalMonthId,
             });
 
             if (headOffice && departmentId) {
@@ -324,11 +364,11 @@ export default function CreateExpenseBudget({
         fetchBudgetedExpenseItems(
             data.branch_id,
             data.department_id,
-            data.month,
-            data.year,
+            data.fiscal_year_id,
+            data.fiscal_month_id,
             isHeadOffice,
         );
-    }, [data.branch_id, data.department_id, data.month, data.year, isHeadOffice, fetchBudgetedExpenseItems]);
+    }, [data.branch_id, data.department_id, data.fiscal_year_id, data.fiscal_month_id, isHeadOffice, fetchBudgetedExpenseItems]);
 
     useEffect(() => {
         if (budgetedExpenseItemIds.size === 0) {
@@ -366,13 +406,13 @@ export default function CreateExpenseBudget({
                     item.expense_item_id,
                     data.branch_id,
                     data.department_id,
-                    data.month,
-                    data.year,
+                    data.fiscal_year_id,
+                    data.fiscal_month_id,
                     isHeadOffice,
                 );
             }
         });
-    }, [data.branch_id, data.department_id, data.month, data.year, isHeadOffice, fetchPrevBudget]);
+    }, [data.branch_id, data.department_id, data.fiscal_year_id, data.fiscal_month_id, isHeadOffice, fetchPrevBudget]);
 
     function handleBranchSelect(branch: BranchOption) {
         setSelectedBranch(branch);
@@ -404,8 +444,8 @@ export default function CreateExpenseBudget({
             expenseItemId,
             data.branch_id,
             data.department_id,
-            data.month,
-            data.year,
+            data.fiscal_year_id,
+            data.fiscal_month_id,
             isHeadOffice,
         );
     }
@@ -480,8 +520,8 @@ export default function CreateExpenseBudget({
                 fetchBudgetedExpenseItems(
                     data.branch_id,
                     data.department_id,
-                    data.month,
-                    data.year,
+                    data.fiscal_year_id,
+                    data.fiscal_month_id,
                     isHeadOffice,
                 );
             },
@@ -513,42 +553,58 @@ export default function CreateExpenseBudget({
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="month">
-                                        Month <span className="text-red-500">*</span>
+                                    <Label htmlFor="fiscal_year_id">
+                                        Fiscal Year <span className="text-red-500">*</span>
                                     </Label>
                                     <Select
-                                        value={String(data.month)}
-                                        onValueChange={(value) => setData('month', parseInt(value, 10))}
+                                        value={data.fiscal_year_id}
+                                        onValueChange={(value) =>
+                                            setData({
+                                                ...data,
+                                                fiscal_year_id: value,
+                                                fiscal_month_id: '',
+                                            })
+                                        }
                                     >
-                                        <SelectTrigger id="month">
-                                            <SelectValue placeholder="ወር ይምረጡ" />
+                                        <SelectTrigger id="fiscal_year_id">
+                                            <SelectValue placeholder="Select fiscal year" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {ETHIOPIAN_FISCAL_MONTHS.map((month) => (
-                                                <SelectItem key={month.value} value={String(month.value)}>
-                                                    {month.am}
+                                            {fiscalYears.map((year) => (
+                                                <SelectItem key={year.id} value={String(year.id)}>
+                                                    {year.name}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <InputError message={errors.month} />
+                                    <InputError message={errors.fiscal_year_id} />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="year">
-                                        Year <span className="text-red-500">*</span>
+                                    <Label htmlFor="fiscal_month_id">
+                                        Fiscal Month <span className="text-red-500">*</span>
                                     </Label>
-                                    <Input
-                                        id="year"
-                                        type="number"
-                                        min={1990}
-                                        max={2100}
-                                        value={data.year}
-                                        onChange={(event) =>
-                                            setData('year', parseInt(event.target.value, 10) || currentEthiopian.year)
-                                        }
-                                    />
-                                    <InputError message={errors.year} />
+                                    <Select
+                                        value={data.fiscal_month_id}
+                                        onValueChange={(value) => setData('fiscal_month_id', value)}
+                                        disabled={!data.fiscal_year_id}
+                                    >
+                                        <SelectTrigger id="fiscal_month_id">
+                                            <SelectValue
+                                                placeholder={
+                                                    data.fiscal_year_id ? 'Select fiscal month' : 'Select fiscal year first'
+                                                }
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {filteredFiscalMonths.map((month) => (
+                                                <SelectItem key={month.id} value={String(month.id)}>
+                                                    {month.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.fiscal_month_id} />
                                 </div>
 
                                 <div className="space-y-2">
