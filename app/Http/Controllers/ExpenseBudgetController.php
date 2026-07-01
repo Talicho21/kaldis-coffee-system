@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\ExpenseBudgetAccess;
 use App\Models\Branch;
 use App\Models\Department;
 use App\Models\ExpenseBudget;
@@ -199,7 +200,7 @@ class ExpenseBudgetController extends Controller
 
     public function create(): Response
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         $branches = Branch::query()
             ->where(function ($query) {
@@ -251,7 +252,7 @@ class ExpenseBudgetController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         $validated = $request->validate([
             'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
@@ -368,7 +369,7 @@ class ExpenseBudgetController extends Controller
 
     public function destroyItem(ExpenseBudgetItem $expenseBudgetItem): RedirectResponse
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         DB::transaction(function () use ($expenseBudgetItem) {
             $budget = $expenseBudgetItem->expenseBudget;
@@ -395,7 +396,7 @@ class ExpenseBudgetController extends Controller
 
     public function updateItem(Request $request, ExpenseBudgetItem $expenseBudgetItem): RedirectResponse
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         $validated = $request->validate([
             'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
@@ -508,7 +509,7 @@ class ExpenseBudgetController extends Controller
 
     public function getPrevBudget(Request $request): JsonResponse
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         $validated = $request->validate([
             'expense_item_id' => ['required', 'exists:expenses,expense_parent_acc_code'],
@@ -553,7 +554,7 @@ class ExpenseBudgetController extends Controller
 
     public function getBudgetedExpenseItems(Request $request): JsonResponse
     {
-        abort_unless(auth()->user()->can('manage expense budgets'), 403);
+        abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
         $validated = $request->validate([
             'branch_id' => ['required', 'exists:branches,id'],

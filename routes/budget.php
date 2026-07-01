@@ -9,7 +9,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('budget/expense-budget/submission-tracker', [ExpenseBudgetController::class, 'submissionTracker'])->name('expense-budget.submission-tracker');
     });
 
-    Route::middleware('permission:manage expense budgets')->group(function () {
+    Route::middleware(['permission:manage expense budgets', 'expense_budget.manage_window'])->group(function () {
         Route::get('budget/expense-budget/create', [ExpenseBudgetController::class, 'create'])->name('expense-budget.create');
         Route::post('budget/expense-budget', [ExpenseBudgetController::class, 'store'])->name('expense-budget.store');
         Route::patch('budget/expense-budget/items/{expenseBudgetItem}', [ExpenseBudgetController::class, 'updateItem'])->name('expense-budget.items.update');

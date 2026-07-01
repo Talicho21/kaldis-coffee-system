@@ -10,15 +10,34 @@ class ExpenseBudgetPermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        $permissions = collect(['manage expense budgets', 'view expense budgets'])
-            ->map(fn (string $name) => Permission::updateOrCreate(
-                ['name' => $name, 'guard_name' => 'web']
-            ));
+        $managePermission = Permission::updateOrCreate(
+            ['name' => 'manage expense budgets', 'guard_name' => 'web'],
+        );
 
-        $roles = Role::whereIn('name', ['Admin', 'Super Admin'])->get();
+        $viewPermission = Permission::updateOrCreate(
+            ['name' => 'view expense budgets', 'guard_name' => 'web'],
+        );
 
-        foreach ($roles as $role) {
-            $role->givePermissionTo($permissions);
+        $fullAccessRoles = [
+            'Admin',
+            'Super Admin',
+            'Finance Manager',
+            'Finance Director',
+        ];
+
+        $windowedManageRoles = [
+            'Branch Manager',
+            'Department Manager',
+        ];
+
+        foreach ($fullAccessRoles as $roleName) {
+            $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'web']);
+            $role->givePermissionTo([$managePermission, $viewPermission]);
+        }
+
+        foreach ($windowedManageRoles as $roleName) {
+            $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'web']);
+            $role->givePermissionTo([$managePermission, $viewPermission]);
         }
     }
 }
