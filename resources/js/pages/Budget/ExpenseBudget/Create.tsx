@@ -600,17 +600,19 @@ export default function CreateExpenseBudget({
                                         Department <span className="text-red-500">*</span>
                                     </Label>
                                     <Popover open={openDepartment} onOpenChange={setOpenDepartment}>
-                                        <PopoverTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                role="combobox"
-                                                className="w-full justify-between font-normal"
-                                                disabled={!isHeadOffice}
-                                            >
-                                                {selectedDepartment ? selectedDepartment.name : 'Select Department'}
-                                                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-                                            </Button>
-                                        </PopoverTrigger>
+                                        <div className={cn(!isHeadOffice && 'cursor-not-allowed')}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    className="w-full justify-between font-normal"
+                                                    disabled={!isHeadOffice}
+                                                >
+                                                    {selectedDepartment ? selectedDepartment.name : 'Select Department'}
+                                                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                        </div>
                                         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                                             <Command>
                                                 <CommandInput placeholder="Search departments..." />
