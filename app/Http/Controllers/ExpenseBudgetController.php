@@ -10,6 +10,7 @@ use App\Models\ExpenseBudgetItem;
 use App\Models\ExpenseItem;
 use App\Models\FiscalMonth;
 use App\Models\FiscalYear;
+use App\Services\ExpenseBudgetActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,10 @@ use Inertia\Response;
 
 class ExpenseBudgetController extends Controller
 {
+    public function __construct(
+        private readonly ExpenseBudgetActivityLogger $activityLogger,
+    ) {}
+
     public function index(): Response
     {
         abort_unless(auth()->user()->can('view expense budgets'), 403);
@@ -336,6 +341,8 @@ class ExpenseBudgetController extends Controller
                 $validated['department_id'] ? (int) $validated['department_id'] : null,
             );
 
+            $budgetWasCreated = false;
+
             if ($budget) {
                 $budget->update([
                     'budget_amount' => (float) $budget->budget_amount + $newBudgetAmount,
@@ -349,16 +356,23 @@ class ExpenseBudgetController extends Controller
                     'budget_amount' => $newBudgetAmount,
                     'created_by' => auth()->id(),
                 ]);
+                $budgetWasCreated = true;
+            }
+
+            if ($budgetWasCreated) {
+                $this->activityLogger->logBudgetCreated($budget);
             }
 
             foreach ($itemsToSave as $item) {
-                ExpenseBudgetItem::create([
+                $createdItem = ExpenseBudgetItem::create([
                     'expense_budget_id' => $budget->id,
                     'expense_item_id' => $item['expense_item_id'],
                     'prev_month_budget' => $item['prev_month_budget'] ?? null,
                     'planned_budget' => $item['planned_budget'],
                     'status' => 'draft',
                 ]);
+
+                $this->activityLogger->logItemCreated($createdItem);
             }
         });
 
@@ -371,17 +385,29 @@ class ExpenseBudgetController extends Controller
     {
         abort_unless(ExpenseBudgetAccess::canManage(), 403, ExpenseBudgetAccess::manageDeniedMessage());
 
-        DB::transaction(function () use ($expenseBudgetItem) {
-            $budget = $expenseBudgetItem->expenseBudget;
+        $expenseBudgetItem->load([
+            'expenseItem',
+            'expenseBudget.fiscalYear',
+            'expenseBudget.fiscalMonth',
+            'expenseBudget.branch',
+            'expenseBudget.department',
+        ]);
 
+        $budget = $expenseBudgetItem->expenseBudget;
+        $willDeleteBudget = $budget && $budget->items()->count() === 1;
+
+        DB::transaction(function () use ($expenseBudgetItem, $budget, $willDeleteBudget) {
             if ($budget) {
+                $this->activityLogger->logItemDeleted($expenseBudgetItem, $budget);
+
                 $budget->update([
                     'budget_amount' => max(0, (float) $budget->budget_amount - (float) $expenseBudgetItem->planned_budget),
                 ]);
 
                 $expenseBudgetItem->delete();
 
-                if ($budget->items()->count() === 0) {
+                if ($willDeleteBudget) {
+                    $this->activityLogger->logBudgetDeleted($budget);
                     $budget->delete();
                 }
             } else {
@@ -452,7 +478,17 @@ class ExpenseBudgetController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($expenseBudgetItem, $validated, $departmentId, $newPlannedBudget) {
+        $expenseBudgetItem->load([
+            'expenseItem',
+            'expenseBudget.fiscalYear',
+            'expenseBudget.fiscalMonth',
+            'expenseBudget.branch',
+            'expenseBudget.department',
+        ]);
+
+        $oldValues = $this->activityLogger->itemAttributes($expenseBudgetItem);
+
+        DB::transaction(function () use ($expenseBudgetItem, $validated, $departmentId, $newPlannedBudget, $oldValues) {
             $oldBudget = $expenseBudgetItem->expenseBudget;
             $oldPlannedBudget = (float) $expenseBudgetItem->planned_budget;
 
@@ -463,6 +499,8 @@ class ExpenseBudgetController extends Controller
                 $departmentId,
             );
 
+            $targetBudgetWasCreated = false;
+
             if (! $targetBudget) {
                 $targetBudget = ExpenseBudget::create([
                     'fiscal_year_id' => $validated['fiscal_year_id'],
@@ -472,6 +510,7 @@ class ExpenseBudgetController extends Controller
                     'budget_amount' => 0,
                     'created_by' => auth()->id(),
                 ]);
+                $targetBudgetWasCreated = true;
             }
 
             if ($oldBudget && $oldBudget->id !== $targetBudget->id) {
@@ -497,8 +536,30 @@ class ExpenseBudgetController extends Controller
                 ]);
 
                 if ($oldBudget->items()->count() === 0) {
+                    $this->activityLogger->logBudgetDeleted($oldBudget);
                     $oldBudget->delete();
                 }
+            }
+
+            if ($targetBudgetWasCreated) {
+                $this->activityLogger->logBudgetCreated($targetBudget);
+            }
+
+            $newValues = $this->activityLogger->itemAttributes($expenseBudgetItem->fresh());
+            $changedOld = [];
+            $changedNew = [];
+
+            foreach ($newValues as $key => $value) {
+                $oldValue = $oldValues[$key] ?? null;
+
+                if ($oldValue != $value) {
+                    $changedOld[$key] = $oldValue;
+                    $changedNew[$key] = $value;
+                }
+            }
+
+            if ($changedNew !== []) {
+                $this->activityLogger->logItemUpdated($expenseBudgetItem, $changedOld, $changedNew);
             }
         });
 

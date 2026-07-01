@@ -33,6 +33,11 @@ class ExpenseBudget extends Model
         return $this->hasMany(ExpenseBudgetItem::class);
     }
 
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ExpenseBudgetActivityLog::class);
+    }
+
     public function fiscalYear(): BelongsTo
     {
         return $this->belongsTo(FiscalYear::class);

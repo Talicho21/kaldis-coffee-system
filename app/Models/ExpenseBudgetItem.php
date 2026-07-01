@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ExpenseBudgetItem extends Model
 {
@@ -31,5 +32,10 @@ class ExpenseBudgetItem extends Model
     public function expenseItem(): BelongsTo
     {
         return $this->belongsTo(ExpenseItem::class, 'expense_item_id');
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ExpenseBudgetActivityLog::class);
     }
 }
