@@ -7,8 +7,15 @@ return [
     ],
 
     'unrestricted_manage_roles' => [
-        'Finance Manager',
-        'Finance Director',
+        'finance manager',
+        'finance director',
+        'Admin',
+        'Super Admin',
+    ],
+
+    'unrestricted_view_roles' => [
+        'finance manager',
+        'finance director',
         'Admin',
         'Super Admin',
     ],

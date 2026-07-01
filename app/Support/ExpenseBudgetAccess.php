@@ -2,6 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\Branch;
+use App\Models\ExpenseBudget;
+use App\Models\ExpenseBudgetItem;
 use App\Models\User;
 use Carbon\CarbonInterface;
 
@@ -29,9 +32,71 @@ class ExpenseBudgetAccess
         return self::isWithinManageWindow();
     }
 
+    public static function canViewItemHistory(?User $user, ExpenseBudgetItem $item): bool
+    {
+        if (! self::canView($user)) {
+            return false;
+        }
+
+        if (self::hasUnrestrictedViewAccess($user)) {
+            return true;
+        }
+
+        $item->loadMissing(['expenseBudget.branch', 'expenseBudget.department']);
+        $budget = $item->expenseBudget;
+
+        if (! $budget) {
+            return false;
+        }
+
+        return self::canViewBudgetHistory($user, $budget);
+    }
+
+    public static function canViewBudgetHistory(?User $user, ExpenseBudget $budget): bool
+    {
+        if (! $user || ! self::canView($user)) {
+            return false;
+        }
+
+        if (self::hasUnrestrictedViewAccess($user)) {
+            return true;
+        }
+
+        $budget->loadMissing('branch');
+
+        if ($user->hasRole('Department Manager')) {
+            if (! self::isHeadOfficeBranch($budget->branch) || ! $budget->department_id) {
+                return false;
+            }
+
+            return $user->isManagerOfDepartment((int) $budget->department_id);
+        }
+
+        if ($user->hasRole('Branch Manager')) {
+            if (self::isHeadOfficeBranch($budget->branch)) {
+                return false;
+            }
+
+            $userBranchId = $user->employee?->branch_id;
+
+            return $userBranchId && (int) $budget->branch_id === (int) $userBranchId;
+        }
+
+        return false;
+    }
+
     public static function hasUnrestrictedManageAccess(User $user): bool
     {
         return $user->hasAnyRole(config('expense_budget.unrestricted_manage_roles', []));
+    }
+
+    public static function hasUnrestrictedViewAccess(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasAnyRole(config('expense_budget.unrestricted_view_roles', []));
     }
 
     public static function isWithinManageWindow(?CarbonInterface $date = null): bool
@@ -50,5 +115,23 @@ class ExpenseBudgetAccess
         $endDay = (int) config('expense_budget.manage_window.end_day', 12);
 
         return "Expense budgets can only be managed from the {$startDay}th to the {$endDay}th of each month.";
+    }
+
+    public static function viewHistoryDeniedMessage(): string
+    {
+        return 'You can only view activity history for your own branch or department.';
+    }
+
+    public static function isHeadOfficeBranch(?Branch $branch): bool
+    {
+        if (! $branch) {
+            return false;
+        }
+
+        if (strcasecmp($branch->branch_code ?? '', 'HO') === 0) {
+            return true;
+        }
+
+        return str_contains($branch->name, 'Head Office');
     }
 }

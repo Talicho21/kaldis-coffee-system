@@ -111,6 +111,7 @@ class ExpenseBudgetController extends Controller
                 'actual_budget' => 0,
                 'status' => $item->status,
                 'submitted_by' => $item->expenseBudget->creator?->name,
+                'can_view_history' => ExpenseBudgetAccess::canViewItemHistory(auth()->user(), $item),
             ]);
 
         $expenseItems = ExpenseItem::query()
@@ -655,6 +656,11 @@ class ExpenseBudgetController extends Controller
     public function itemActivityLogs(ExpenseBudgetItem $expenseBudgetItem): JsonResponse
     {
         abort_unless(ExpenseBudgetAccess::canView(), 403);
+        abort_unless(
+            ExpenseBudgetAccess::canViewItemHistory(auth()->user(), $expenseBudgetItem),
+            403,
+            ExpenseBudgetAccess::viewHistoryDeniedMessage(),
+        );
 
         $expenseBudgetItem->load([
             'expenseItem',

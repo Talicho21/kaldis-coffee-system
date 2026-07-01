@@ -76,6 +76,7 @@ type ExpenseBudgetRow = {
     actual_budget: number;
     status: string;
     submitted_by: string | null;
+    can_view_history: boolean;
 };
 
 type EditFormState = {
@@ -411,13 +412,17 @@ export default function ExpenseBudgetIndex({
             const response = await fetch(`/budget/expense-budget/items/${item.id}/activity-logs`);
 
             if (!response.ok) {
+                if (response.status === 403) {
+                    throw new Error('You can only view activity history for your own branch or department.');
+                }
+
                 throw new Error('Failed to load activity history.');
             }
 
             const data = (await response.json()) as ActivityLogResponse;
             setHistoryData(data);
-        } catch {
-            toast.error('Failed to load activity history.');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to load activity history.');
             setHistoryItem(null);
         } finally {
             setHistoryLoading(false);
@@ -646,14 +651,16 @@ export default function ExpenseBudgetIndex({
                                         <TableCell>{item.submitted_by ?? 'N/A'}</TableCell>
                                         <TableCell>
                                             <div className="flex flex-wrap gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => openHistoryDialog(item)}
-                                                >
-                                                    <History className="mr-1 size-4" />
-                                                    History
-                                                </Button>
+                                                {item.can_view_history && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => openHistoryDialog(item)}
+                                                    >
+                                                        <History className="mr-1 size-4" />
+                                                        History
+                                                    </Button>
+                                                )}
                                                 {can('manage expense budgets') && (
                                                     <>
                                                         <Button
