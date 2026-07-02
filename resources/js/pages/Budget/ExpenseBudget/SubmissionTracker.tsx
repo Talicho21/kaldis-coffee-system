@@ -10,9 +10,7 @@ import { Check, Filter, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Budget', href: null },
-    { title: 'Expense Budget', href: '/budget/expense-budget' },
-    { title: 'Submission Tracker', href: '/budget/expense-budget/submission-tracker' },
+    { title: 'Expense Submission Tracker', href: '/budget/expense-budget/submission-tracker' },
 ];
 
 type BranchOption = {

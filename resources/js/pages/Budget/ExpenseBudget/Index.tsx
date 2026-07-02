@@ -29,8 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Budget', href: null },
-    { title: 'Expense Budget', href: '/budget/expense-budget' },
+    { title: 'View Expense Budget', href: '/budget/expense-budget' },
 ];
 
 type BranchOption = {
