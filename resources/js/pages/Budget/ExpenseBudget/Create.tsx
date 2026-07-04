@@ -195,6 +195,47 @@ function getItemsAfterSave(currentItems: BudgetItemRow[], savedItemIds: Set<numb
     return remaining;
 }
 
+function buildFrequentItemsForScope(
+    frequentExpenseItems: ExpenseItemOption[],
+    budgetedIds: Set<number>,
+): BudgetItemRow[] {
+    const items = frequentExpenseItems
+        .filter((item) => !budgetedIds.has(item.id))
+        .map((item) => ({
+            expense_item_id: item.id,
+            planned_budget: '',
+        }));
+
+    if (items.length === 0) {
+        return [{ expense_item_id: '', planned_budget: '' }];
+    }
+
+    return items;
+}
+
+function buildScopeKey(
+    branchId: string,
+    departmentId: string,
+    fiscalYearId: string,
+    fiscalMonthId: string,
+): string {
+    return `${branchId}|${departmentId}|${fiscalYearId}|${fiscalMonthId}`;
+}
+
+function hasCompleteScope(
+    branchId: string,
+    departmentId: string,
+    fiscalYearId: string,
+    fiscalMonthId: string,
+    headOffice: boolean,
+): boolean {
+    if (!branchId || !fiscalYearId || !fiscalMonthId) {
+        return false;
+    }
+
+    return !headOffice || Boolean(departmentId);
+}
+
 export default function CreateExpenseBudget({
     branches,
     departments,
@@ -224,8 +265,8 @@ export default function CreateExpenseBudget({
     const [prevBudgets, setPrevBudgets] = useState<Record<number, number | null>>({});
     const [loadingPrevBudget, setLoadingPrevBudget] = useState<Record<number, boolean>>({});
     const [budgetedExpenseItemIds, setBudgetedExpenseItemIds] = useState<Set<number>>(new Set());
-    const itemsRef = useRef(data.items);
-    itemsRef.current = data.items;
+    const prevScopeRef = useRef('');
+    const activeScopeRef = useRef('');
 
     const allExpenseItems = useMemo(
         () => [...frequentExpenseItems, ...otherExpenseItems],
@@ -256,15 +297,24 @@ export default function CreateExpenseBudget({
         [data.items],
     );
 
+    const itemIdsSignature = useMemo(
+        () =>
+            data.items
+                .map((item) => item.expense_item_id)
+                .filter((id): id is number => typeof id === 'number')
+                .join('|'),
+        [data.items],
+    );
+
     const fetchPrevBudget = useCallback(
         async (
-            rowIndex: number,
             expenseItemId: number,
             branchId: string,
             departmentId: string,
             fiscalYearId: string,
             fiscalMonthId: string,
             headOffice: boolean,
+            scopeKey: string,
         ) => {
             if (!branchId || !expenseItemId || !fiscalYearId || !fiscalMonthId) {
                 return;
@@ -274,7 +324,7 @@ export default function CreateExpenseBudget({
                 return;
             }
 
-            setLoadingPrevBudget((prev) => ({ ...prev, [rowIndex]: true }));
+            setLoadingPrevBudget((prev) => ({ ...prev, [expenseItemId]: true }));
 
             try {
                 const params = new URLSearchParams({
@@ -291,12 +341,18 @@ export default function CreateExpenseBudget({
                 const response = await fetch(`/budget/expense-budget/prev-budget?${params.toString()}`);
                 const result = (await response.json()) as { prev_month_budget: number | null };
 
+                if (activeScopeRef.current !== scopeKey) {
+                    return;
+                }
+
                 setPrevBudgets((prev) => ({
                     ...prev,
-                    [rowIndex]: result.prev_month_budget ?? null,
+                    [expenseItemId]: result.prev_month_budget ?? null,
                 }));
             } finally {
-                setLoadingPrevBudget((prev) => ({ ...prev, [rowIndex]: false }));
+                if (activeScopeRef.current === scopeKey) {
+                    setLoadingPrevBudget((prev) => ({ ...prev, [expenseItemId]: false }));
+                }
             }
         },
         [],
@@ -309,14 +365,15 @@ export default function CreateExpenseBudget({
             fiscalYearId: string,
             fiscalMonthId: string,
             headOffice: boolean,
+            { rebuildItems = false }: { rebuildItems?: boolean } = {},
         ) => {
-            if (!branchId || !fiscalYearId || !fiscalMonthId) {
-                setBudgetedExpenseItemIds(new Set());
-                return;
-            }
+            const scopeKey = buildScopeKey(branchId, departmentId, fiscalYearId, fiscalMonthId);
 
-            if (headOffice && !departmentId) {
-                setBudgetedExpenseItemIds(new Set());
+            if (!hasCompleteScope(branchId, departmentId, fiscalYearId, fiscalMonthId, headOffice)) {
+                if (rebuildItems && activeScopeRef.current === scopeKey) {
+                    setBudgetedExpenseItemIds(new Set());
+                }
+
                 return;
             }
 
@@ -332,10 +389,19 @@ export default function CreateExpenseBudget({
 
             const response = await fetch(`/budget/expense-budget/budgeted-items?${params.toString()}`);
             const result = (await response.json()) as { expense_item_ids: number[] };
+            const budgetedIds = new Set(result.expense_item_ids);
 
-            setBudgetedExpenseItemIds(new Set(result.expense_item_ids));
+            if (activeScopeRef.current !== scopeKey) {
+                return;
+            }
+
+            setBudgetedExpenseItemIds(budgetedIds);
+
+            if (rebuildItems) {
+                setData('items', buildFrequentItemsForScope(frequentExpenseItems, budgetedIds));
+            }
         },
-        [],
+        [frequentExpenseItems, setData],
     );
 
     useEffect(() => {
@@ -353,11 +419,58 @@ export default function CreateExpenseBudget({
                     return {
                         expense_item_id: item.expense_item_id,
                         planned_budget: parsedBudget === null || Number.isNaN(parsedBudget) ? null : parsedBudget,
-                        prev_month_budget: prevBudgets[index] ?? null,
+                        prev_month_budget:
+                            typeof item.expense_item_id === 'number'
+                                ? prevBudgets[item.expense_item_id] ?? null
+                                : null,
                     };
                 }),
         }));
     }, [transform, prevBudgets]);
+
+    useEffect(() => {
+        const scope = buildScopeKey(
+            data.branch_id,
+            data.department_id,
+            data.fiscal_year_id,
+            data.fiscal_month_id,
+        );
+
+        if (prevScopeRef.current === scope) {
+            return;
+        }
+
+        activeScopeRef.current = scope;
+        prevScopeRef.current = scope;
+        setPrevBudgets({});
+        setLoadingPrevBudget({});
+
+        if (!data.branch_id) {
+            return;
+        }
+
+        setData('items', buildInitialItems(frequentExpenseItems));
+
+        const completeScope = hasCompleteScope(
+            data.branch_id,
+            data.department_id,
+            data.fiscal_year_id,
+            data.fiscal_month_id,
+            isHeadOffice,
+        );
+
+        if (!completeScope) {
+            setBudgetedExpenseItemIds(new Set());
+        }
+    }, [
+        data.branch_id,
+        data.department_id,
+        data.fiscal_year_id,
+        data.fiscal_month_id,
+        isHeadOffice,
+        frequentExpenseItems,
+        setData,
+    ]);
 
     useEffect(() => {
         fetchBudgetedExpenseItems(
@@ -366,52 +479,58 @@ export default function CreateExpenseBudget({
             data.fiscal_year_id,
             data.fiscal_month_id,
             isHeadOffice,
+            { rebuildItems: true },
         );
     }, [data.branch_id, data.department_id, data.fiscal_year_id, data.fiscal_month_id, isHeadOffice, fetchBudgetedExpenseItems]);
 
     useEffect(() => {
-        if (budgetedExpenseItemIds.size === 0) {
+        if (
+            !hasCompleteScope(
+                data.branch_id,
+                data.department_id,
+                data.fiscal_year_id,
+                data.fiscal_month_id,
+                isHeadOffice,
+            )
+        ) {
             return;
         }
 
-        const hasBudgetedRow = data.items.some(
-            (item) => typeof item.expense_item_id === 'number' && budgetedExpenseItemIds.has(item.expense_item_id),
+        const scopeKey = buildScopeKey(
+            data.branch_id,
+            data.department_id,
+            data.fiscal_year_id,
+            data.fiscal_month_id,
         );
 
-        if (!hasBudgetedRow) {
-            return;
-        }
+        setPrevBudgets({});
+        setLoadingPrevBudget({});
 
-        const filtered = data.items.filter(
-            (item) => typeof item.expense_item_id !== 'number' || !budgetedExpenseItemIds.has(item.expense_item_id),
-        );
-
-        setData('items', filtered.length > 0 ? filtered : [{ expense_item_id: '', planned_budget: '' }]);
-    }, [budgetedExpenseItemIds, data.items, setData]);
-
-    useEffect(() => {
-        if (!data.branch_id) {
-            return;
-        }
-
-        if (isHeadOffice && !data.department_id) {
-            return;
-        }
-
-        itemsRef.current.forEach((item, index) => {
-            if (typeof item.expense_item_id === 'number') {
-                fetchPrevBudget(
-                    index,
-                    item.expense_item_id,
-                    data.branch_id,
-                    data.department_id,
-                    data.fiscal_year_id,
-                    data.fiscal_month_id,
-                    isHeadOffice,
-                );
+        data.items.forEach((item) => {
+            if (typeof item.expense_item_id !== 'number') {
+                return;
             }
+
+            fetchPrevBudget(
+                item.expense_item_id,
+                data.branch_id,
+                data.department_id,
+                data.fiscal_year_id,
+                data.fiscal_month_id,
+                isHeadOffice,
+                scopeKey,
+            );
         });
-    }, [data.branch_id, data.department_id, data.fiscal_year_id, data.fiscal_month_id, isHeadOffice, fetchPrevBudget]);
+    }, [
+        itemIdsSignature,
+        data.branch_id,
+        data.department_id,
+        data.fiscal_year_id,
+        data.fiscal_month_id,
+        data.items,
+        isHeadOffice,
+        fetchPrevBudget,
+    ]);
 
     function handleBranchSelect(branch: BranchOption) {
         setSelectedBranch(branch);
@@ -438,15 +557,6 @@ export default function CreateExpenseBudget({
             ),
         );
         setOpenExpenseRow(null);
-        fetchPrevBudget(
-            rowIndex,
-            expenseItemId,
-            data.branch_id,
-            data.department_id,
-            data.fiscal_year_id,
-            data.fiscal_month_id,
-            isHeadOffice,
-        );
     }
 
     function handlePlannedBudgetChange(rowIndex: number, value: string) {
@@ -522,6 +632,7 @@ export default function CreateExpenseBudget({
                     data.fiscal_year_id,
                     data.fiscal_month_id,
                     isHeadOffice,
+                    { rebuildItems: false },
                 );
             },
         });
@@ -724,6 +835,8 @@ export default function CreateExpenseBudget({
                                                     : undefined;
                                             const ExpenseIcon = expenseItem ? resolveExpenseIcon(expenseItem.icon) : null;
                                             const availableItems = getAvailableExpenseItems(rowIndex);
+                                            const expenseItemId =
+                                                typeof row.expense_item_id === 'number' ? row.expense_item_id : null;
 
                                             return (
                                                 <TableRow key={rowIndex}>
@@ -779,10 +892,12 @@ export default function CreateExpenseBudget({
                                                     </TableCell>
 
                                                     <TableCell className="align-middle text-sm">
-                                                        {loadingPrevBudget[rowIndex] ? (
+                                                        {expenseItemId !== null && loadingPrevBudget[expenseItemId] ? (
                                                             <span className="text-muted-foreground">Loading...</span>
-                                                        ) : prevBudgets[rowIndex] !== undefined && prevBudgets[rowIndex] !== null ? (
-                                                            formatAmount(prevBudgets[rowIndex])
+                                                        ) : expenseItemId !== null &&
+                                                          prevBudgets[expenseItemId] !== undefined &&
+                                                          prevBudgets[expenseItemId] !== null ? (
+                                                            formatAmount(prevBudgets[expenseItemId])
                                                         ) : (
                                                             <span className="italic text-muted-foreground">Not available</span>
                                                         )}
