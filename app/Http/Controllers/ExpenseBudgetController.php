@@ -145,15 +145,21 @@ class ExpenseBudgetController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $frequentExpenseItems = ExpenseItem::query()
-            ->where('frequent_expense', true)
+        $allExpenseItems = ExpenseItem::query()
             ->orderBy('expense_type')
-            ->get(['expense_parent_acc_code', 'expense_type'])
+            ->get(['expense_parent_acc_code', 'expense_type', 'frequent_expense'])
             ->map(fn (ExpenseItem $item) => [
                 'id' => $item->expense_parent_acc_code,
                 'name' => $item->expense_type,
+                'frequent_expense' => (bool) $item->frequent_expense,
             ])
             ->values();
+
+        $frequentExpenseItems = $allExpenseItems
+            ->where('frequent_expense', true)
+            ->values();
+
+        $visibleExpenseItems = $this->resolveVisibleExpenseItems($allExpenseItems, $frequentExpenseItems);
 
         $submissionLookup = $this->buildSubmissionLookup(
             request('fiscal_month_id'),
@@ -178,7 +184,7 @@ class ExpenseBudgetController extends Controller
                     $rows[] = $this->buildSubmissionTrackerRow(
                         $branch,
                         $department,
-                        $frequentExpenseItems,
+                        $visibleExpenseItems,
                         $submissionLookup,
                     );
                 }
@@ -186,7 +192,7 @@ class ExpenseBudgetController extends Controller
                 $rows[] = $this->buildSubmissionTrackerRow(
                     $branch,
                     null,
-                    $frequentExpenseItems,
+                    $visibleExpenseItems,
                     $submissionLookup,
                 );
             }
@@ -194,12 +200,21 @@ class ExpenseBudgetController extends Controller
 
         return Inertia::render('Budget/ExpenseBudget/SubmissionTracker', [
             'rows' => $rows,
+            'allExpenseItems' => $allExpenseItems,
+            'visibleExpenseItems' => $visibleExpenseItems,
             'frequentExpenseItems' => $frequentExpenseItems,
             'branches' => $branches,
             'departments' => $departments,
             'fiscalYears' => $this->fiscalYearOptions(),
             'fiscalMonths' => $this->fiscalMonthOptions(),
-            'request' => request()->only(['branch_id', 'department_id', 'fiscal_month_id', 'fiscal_year_id']),
+            'request' => request()->only([
+                'branch_id',
+                'department_id',
+                'fiscal_month_id',
+                'fiscal_year_id',
+                'expense_item_id',
+                'expense_item_ids',
+            ]),
         ]);
     }
 
@@ -702,19 +717,52 @@ class ExpenseBudgetController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, array{id: int, name: string}>  $frequentExpenseItems
+     * @param  \Illuminate\Support\Collection<int, array{id: int, name: string, frequent_expense: bool}>  $allExpenseItems
+     * @param  \Illuminate\Support\Collection<int, array{id: int, name: string, frequent_expense: bool}>  $frequentExpenseItems
+     * @return \Illuminate\Support\Collection<int, array{id: int, name: string, frequent_expense: bool}>
+     */
+    private function resolveVisibleExpenseItems($allExpenseItems, $frequentExpenseItems)
+    {
+        $validIds = $allExpenseItems->pluck('id')->map(fn ($id) => (int) $id);
+
+        if ($singleExpenseItemId = request('expense_item_id')) {
+            $id = (int) $singleExpenseItemId;
+
+            if ($validIds->contains($id)) {
+                return $allExpenseItems->where('id', $id)->values();
+            }
+        }
+
+        $requestedIds = collect(explode(',', (string) request('expense_item_ids', '')))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $validIds->contains($id))
+            ->unique()
+            ->values();
+
+        if ($requestedIds->isNotEmpty()) {
+            return $allExpenseItems
+                ->filter(fn (array $item) => $requestedIds->contains((int) $item['id']))
+                ->values();
+        }
+
+        return $frequentExpenseItems;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array{id: int, name: string}>  $visibleExpenseItems
      * @return array{branch: string, department: string, submissions: array<string, bool>}
      */
     private function buildSubmissionTrackerRow(
         Branch $branch,
         ?Department $department,
-        $frequentExpenseItems,
+        $visibleExpenseItems,
         array $submissionLookup,
     ): array {
         $departmentKey = $department?->id ?? 0;
         $submissions = [];
 
-        foreach ($frequentExpenseItems as $expenseItem) {
+        foreach ($visibleExpenseItems as $expenseItem) {
             $lookupKey = "{$branch->id}|{$departmentKey}|{$expenseItem['id']}";
             $submissions[(string) $expenseItem['id']] = isset($submissionLookup[$lookupKey]);
         }

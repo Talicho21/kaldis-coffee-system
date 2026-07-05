@@ -8,7 +8,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
-import { Check, ChevronsUpDown, Filter, X } from 'lucide-react';
+import { Check, ChevronsUpDown, Filter, Plus, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -26,9 +26,10 @@ type DepartmentOption = {
     name: string;
 };
 
-type FrequentExpenseItem = {
+type ExpenseItemOption = {
     id: number;
     name: string;
+    frequent_expense: boolean;
 };
 
 type TrackerRow = {
@@ -50,7 +51,9 @@ type FiscalMonthOption = {
 
 type SubmissionTrackerProps = {
     rows: TrackerRow[];
-    frequentExpenseItems: FrequentExpenseItem[];
+    allExpenseItems: ExpenseItemOption[];
+    visibleExpenseItems: ExpenseItemOption[];
+    frequentExpenseItems: ExpenseItemOption[];
     branches: BranchOption[];
     departments: DepartmentOption[];
     fiscalYears: FiscalYearOption[];
@@ -60,6 +63,8 @@ type SubmissionTrackerProps = {
         department_id?: string;
         fiscal_month_id?: string;
         fiscal_year_id?: string;
+        expense_item_id?: string;
+        expense_item_ids?: string;
     };
 };
 
@@ -75,8 +80,11 @@ function isHeadOfficeBranch(branch: BranchOption | null | undefined): boolean {
     return branch.name.includes('Head Office');
 }
 
-function countSubmittedExpenses(submissions: Record<string, boolean>): number {
-    return Object.values(submissions).filter(Boolean).length;
+function countSubmittedExpenses(
+    submissions: Record<string, boolean>,
+    visibleExpenseItemIds: string[],
+): number {
+    return visibleExpenseItemIds.filter((id) => submissions[id]).length;
 }
 
 function formatTrackerLabel(name: string, submittedCount: number): string {
@@ -88,6 +96,8 @@ function buildFilterParams(
     selectedDepartment: string,
     selectedFiscalMonth: string,
     selectedFiscalYear: string,
+    selectedExpenseItem: string,
+    expenseItemIds: string[] | null,
 ): Record<string, string> {
     const params: Record<string, string> = {};
 
@@ -103,12 +113,20 @@ function buildFilterParams(
     if (selectedFiscalYear !== 'all') {
         params.fiscal_year_id = selectedFiscalYear;
     }
+    if (selectedExpenseItem !== 'all') {
+        params.expense_item_id = selectedExpenseItem;
+    }
+    if (expenseItemIds && expenseItemIds.length > 0) {
+        params.expense_item_ids = expenseItemIds.join(',');
+    }
 
     return params;
 }
 
 export default function ExpenseSubmissionTracker({
     rows,
+    allExpenseItems,
+    visibleExpenseItems,
     frequentExpenseItems,
     branches,
     departments,
@@ -120,8 +138,16 @@ export default function ExpenseSubmissionTracker({
     const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
     const [selectedFiscalMonth, setSelectedFiscalMonth] = useState<string>(request?.fiscal_month_id ?? 'all');
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>(request?.fiscal_year_id ?? 'all');
+    const [selectedExpenseItem, setSelectedExpenseItem] = useState<string>(request?.expense_item_id ?? 'all');
     const [openBranchFilter, setOpenBranchFilter] = useState(false);
     const [openDepartmentFilter, setOpenDepartmentFilter] = useState(false);
+    const [openExpenseItemFilter, setOpenExpenseItemFilter] = useState(false);
+    const [openAddColumn, setOpenAddColumn] = useState(false);
+
+    const visibleExpenseItemIds = useMemo(
+        () => visibleExpenseItems.map((item) => String(item.id)),
+        [visibleExpenseItems],
+    );
 
     const filteredFiscalMonths = useMemo(() => {
         if (selectedFiscalYear === 'all') {
@@ -139,7 +165,41 @@ export default function ExpenseSubmissionTracker({
             ? null
             : departments.find((department) => department.id.toString() === selectedDepartment) ?? null;
 
+    const selectedExpenseItemOption = useMemo(
+        () =>
+            selectedExpenseItem === 'all'
+                ? null
+                : allExpenseItems.find((item) => String(item.id) === selectedExpenseItem) ?? null,
+        [allExpenseItems, selectedExpenseItem],
+    );
+
+    const addableExpenseItems = useMemo(
+        () => allExpenseItems.filter((item) => !visibleExpenseItemIds.includes(String(item.id))),
+        [allExpenseItems, visibleExpenseItemIds],
+    );
+
     const canFilterByDepartment = isHeadOfficeBranch(selectedBranchOption);
+
+    function resolveExpenseItemIdsForParams(override: string[] | null | undefined): string[] | null {
+        if (override !== undefined) {
+            return override;
+        }
+
+        if (selectedExpenseItem !== 'all') {
+            return [selectedExpenseItem];
+        }
+
+        if (request?.expense_item_ids) {
+            return request.expense_item_ids.split(',').filter(Boolean);
+        }
+
+        const frequentIds = frequentExpenseItems.map((item) => String(item.id));
+        const isCustomColumns =
+            visibleExpenseItemIds.length !== frequentIds.length ||
+            visibleExpenseItemIds.some((id, index) => id !== frequentIds[index]);
+
+        return isCustomColumns ? visibleExpenseItemIds : null;
+    }
 
     function applyFilters(
         overrides: Partial<{
@@ -147,13 +207,20 @@ export default function ExpenseSubmissionTracker({
             department: string;
             fiscal_month: string;
             fiscal_year: string;
+            expense_item: string;
+            expense_item_ids: string[] | null;
         }> = {},
     ) {
+        const expenseItem = overrides.expense_item ?? selectedExpenseItem;
+        const expenseItemIds = resolveExpenseItemIdsForParams(overrides.expense_item_ids);
+
         const params = buildFilterParams(
             overrides.branch ?? selectedBranch,
             overrides.department ?? selectedDepartment,
             overrides.fiscal_month ?? selectedFiscalMonth,
             overrides.fiscal_year ?? selectedFiscalYear,
+            expenseItem,
+            expenseItemIds,
         );
 
         router.get('/budget/expense-budget/submission-tracker', params, { preserveState: true, replace: true });
@@ -172,6 +239,18 @@ export default function ExpenseSubmissionTracker({
         applyFilters({ department: departmentId });
     }
 
+    function handleExpenseItemFilterSelect(expenseItemId: string) {
+        setOpenExpenseItemFilter(false);
+        setSelectedExpenseItem(expenseItemId);
+
+        if (expenseItemId === 'all') {
+            applyFilters({ expense_item: 'all', expense_item_ids: null });
+            return;
+        }
+
+        applyFilters({ expense_item: expenseItemId, expense_item_ids: [expenseItemId] });
+    }
+
     function handleFiscalMonthChange(value: string) {
         setSelectedFiscalMonth(value);
         applyFilters({ fiscal_month: value });
@@ -183,11 +262,38 @@ export default function ExpenseSubmissionTracker({
         applyFilters({ fiscal_year: value, fiscal_month: 'all' });
     }
 
+    function addExpenseItemColumn(expenseItemId: string) {
+        setOpenAddColumn(false);
+        const nextIds = [...visibleExpenseItemIds, expenseItemId];
+        setSelectedExpenseItem('all');
+        applyFilters({ expense_item: 'all', expense_item_ids: nextIds });
+    }
+
+    function removeExpenseItemColumn(expenseItemId: string) {
+        if (visibleExpenseItemIds.length <= 1) {
+            return;
+        }
+
+        const nextIds = visibleExpenseItemIds.filter((id) => id !== expenseItemId);
+        const nextExpenseItemFilter =
+            selectedExpenseItem === expenseItemId ? 'all' : selectedExpenseItem;
+
+        if (selectedExpenseItem === expenseItemId) {
+            setSelectedExpenseItem('all');
+        }
+
+        applyFilters({
+            expense_item: nextExpenseItemFilter,
+            expense_item_ids: nextIds,
+        });
+    }
+
     function clearFilters() {
         setSelectedBranch('all');
         setSelectedDepartment('all');
         setSelectedFiscalMonth('all');
         setSelectedFiscalYear('all');
+        setSelectedExpenseItem('all');
         router.get('/budget/expense-budget/submission-tracker', {}, { preserveState: true, replace: true });
     }
 
@@ -195,7 +301,9 @@ export default function ExpenseSubmissionTracker({
         selectedBranch !== 'all' ||
         selectedDepartment !== 'all' ||
         selectedFiscalMonth !== 'all' ||
-        selectedFiscalYear !== 'all';
+        selectedFiscalYear !== 'all' ||
+        selectedExpenseItem !== 'all' ||
+        Boolean(request?.expense_item_ids);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -317,6 +425,59 @@ export default function ExpenseSubmissionTracker({
                                         </Command>
                                     </PopoverContent>
                                 </Popover>
+                                <Popover open={openExpenseItemFilter} onOpenChange={setOpenExpenseItemFilter}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            className="w-[200px] justify-between font-normal"
+                                        >
+                                            {selectedExpenseItemOption?.name ?? 'All Expense Items'}
+                                            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Search expense items..." />
+                                            <CommandList className="max-h-60">
+                                                <CommandEmpty>No expense items found.</CommandEmpty>
+                                                <CommandGroup>
+                                                    <CommandItem
+                                                        value="All Expense Items"
+                                                        onSelect={() => handleExpenseItemFilterSelect('all')}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                'mr-2 size-4',
+                                                                selectedExpenseItem === 'all' ? 'opacity-100' : 'opacity-0',
+                                                            )}
+                                                        />
+                                                        All Expense Items
+                                                    </CommandItem>
+                                                    {allExpenseItems.map((item) => (
+                                                        <CommandItem
+                                                            key={item.id}
+                                                            value={item.name}
+                                                            onSelect={() =>
+                                                                handleExpenseItemFilterSelect(String(item.id))
+                                                            }
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    'mr-2 size-4',
+                                                                    selectedExpenseItem === String(item.id)
+                                                                        ? 'opacity-100'
+                                                                        : 'opacity-0',
+                                                                )}
+                                                            />
+                                                            {item.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 <Select value={selectedFiscalYear} onValueChange={handleFiscalYearChange}>
                                     <SelectTrigger className="w-[180px]">
                                         <SelectValue placeholder="All Fiscal Years" />
@@ -354,6 +515,45 @@ export default function ExpenseSubmissionTracker({
                     </CardHeader>
                     <hr />
                     <CardContent className="pt-6">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm text-muted-foreground">
+                                Showing {visibleExpenseItems.length} expense item column
+                                {visibleExpenseItems.length === 1 ? '' : 's'}
+                            </p>
+                            <Popover open={openAddColumn} onOpenChange={setOpenAddColumn}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={addableExpenseItems.length === 0}
+                                    >
+                                        <Plus className="mr-1 size-4" />
+                                        Add Expense Item Column
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[280px] p-0" align="end">
+                                    <Command>
+                                        <CommandInput placeholder="Search expense items..." />
+                                        <CommandList className="max-h-60">
+                                            <CommandEmpty>No more expense items to add.</CommandEmpty>
+                                            <CommandGroup>
+                                                {addableExpenseItems.map((item) => (
+                                                    <CommandItem
+                                                        key={item.id}
+                                                        value={item.name}
+                                                        onSelect={() => addExpenseItemColumn(String(item.id))}
+                                                    >
+                                                        <Plus className="mr-2 size-4 opacity-60" />
+                                                        {item.name}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                         <Table>
                             <TableHeader className="bg-slate-500 dark:bg-slate-700">
                                 <TableRow>
@@ -363,12 +563,25 @@ export default function ExpenseSubmissionTracker({
                                     <TableHead className="sticky left-[180px] z-40 min-w-[180px] bg-slate-500 font-bold text-white shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)] dark:bg-slate-700">
                                         Department
                                     </TableHead>
-                                    {frequentExpenseItems.map((item) => (
+                                    {visibleExpenseItems.map((item) => (
                                         <TableHead
                                             key={item.id}
-                                            className="relative z-0 min-w-[140px] bg-slate-500 text-center font-bold text-white dark:bg-slate-700"
+                                            className="relative z-0 min-w-[160px] bg-slate-500 text-center font-bold text-white dark:bg-slate-700"
                                         >
-                                            {item.name}
+                                            <div className="flex items-center justify-center gap-1">
+                                                <span className="truncate">{item.name}</span>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-6 shrink-0 text-white hover:bg-white/20 hover:text-white"
+                                                    onClick={() => removeExpenseItemColumn(String(item.id))}
+                                                    disabled={visibleExpenseItems.length <= 1}
+                                                    title="Remove column"
+                                                >
+                                                    <X className="size-3.5" />
+                                                </Button>
+                                            </div>
                                         </TableHead>
                                     ))}
                                 </TableRow>
@@ -380,7 +593,10 @@ export default function ExpenseSubmissionTracker({
                                             index % 2 === 1
                                                 ? 'bg-slate-100 dark:bg-slate-800'
                                                 : 'bg-white dark:bg-background';
-                                        const submittedCount = countSubmittedExpenses(row.submissions);
+                                        const submittedCount = countSubmittedExpenses(
+                                            row.submissions,
+                                            visibleExpenseItemIds,
+                                        );
                                         const isHeadOfficeRow = row.department !== '-';
                                         const branchLabel = isHeadOfficeRow
                                             ? row.branch
@@ -410,7 +626,7 @@ export default function ExpenseSubmissionTracker({
                                                 >
                                                     {departmentLabel}
                                                 </TableCell>
-                                                {frequentExpenseItems.map((item) => {
+                                                {visibleExpenseItems.map((item) => {
                                                     const submitted = row.submissions[String(item.id)] ?? false;
 
                                                     return (
@@ -432,7 +648,7 @@ export default function ExpenseSubmissionTracker({
                                 ) : (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={2 + frequentExpenseItems.length}
+                                            colSpan={2 + visibleExpenseItems.length}
                                             className="py-8 text-center text-muted-foreground"
                                         >
                                             No Results Found!
