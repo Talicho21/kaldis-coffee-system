@@ -35,6 +35,7 @@ class InventoryCompletionTrackingController extends Controller
         $inventoryPeriods = $query->with('fiscalYear:id,name')->get();
         $branches = Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
             ->whereNotIn('id', [3, 5, 48])
+            ->orderBy('name')
             ->get();
         $totalChildCategories = ChildCategory::count();
 
@@ -90,9 +91,10 @@ class InventoryCompletionTrackingController extends Controller
         $inventoryPeriods = $query->get();
         
         // Cache branches for 10 minutes
-        $branches = Cache::remember('branches_inventory_tracking', 600, fn() => 
+        $branches = Cache::remember('branches_inventory_tracking', 600, fn() =>
             Branch::whereNotIn('name', ['Production', 'Head Office', 'Production 2'])
                 ->whereNotIn('id', [3, 5, 48])
+                ->orderBy('name')
                 ->get()
         );
         

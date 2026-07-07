@@ -126,6 +126,14 @@
                     @endif
                 </tr>
             @endif
+            @if($ticket->fiscalYear)
+                <tr>
+                    <td class="label">Fiscal Year:</td>
+                    <td>{{ $ticket->fiscalYear->name }}</td>
+                    <td class="label">Fiscal Month:</td>
+                    <td>{{ $ticket->fiscalMonth?->name ?? 'N/A' }}</td>
+                </tr>
+            @endif
         </table>
     </div>
 

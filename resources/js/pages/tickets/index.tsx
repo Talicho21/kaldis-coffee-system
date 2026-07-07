@@ -42,6 +42,8 @@ type PageProps = {
     severity?: string;
     priority?: string;
     main_category_id?: string;
+    fiscal_year_id?: string;
+    fiscal_month_id?: string;
     start_date?: string;
     end_date?: string;
   };
@@ -53,6 +55,8 @@ type PageProps = {
     priorities: string[];
     departments: { id: number; name: string }[];
     categories: { id: number; name: string }[];
+    fiscalYears: { id: number; name: string }[];
+    fiscalMonths: { id: number; name: string; fiscal_year_id: number }[];
   };
 };
 
@@ -67,9 +71,15 @@ export default function TicketIndex() {
     severity: filters.severity ?? 'all',
     priority: filters.priority ?? 'all',
     main_category_id: filters.main_category_id ?? 'all',
+    fiscal_year_id: filters.fiscal_year_id ?? 'all',
+    fiscal_month_id: filters.fiscal_month_id ?? 'all',
     start_date: filters.start_date ?? '',
     end_date: filters.end_date ?? '',
   });
+
+  const filteredFiscalMonths = options.fiscalMonths.filter(
+    (m) => params.fiscal_year_id === 'all' || String(m.fiscal_year_id) === params.fiscal_year_id
+  );
 
   useEffect(() => {
     if (flash?.message) toast.success(flash.message);
@@ -90,6 +100,8 @@ export default function TicketIndex() {
       severity: 'all',
       priority: 'all',
       main_category_id: 'all',
+      fiscal_year_id: 'all',
+      fiscal_month_id: 'all',
       start_date: '',
       end_date: '',
     });
@@ -194,6 +206,47 @@ export default function TicketIndex() {
                     {options.categories.map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>
                         {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fiscal Year</label>
+                <Select
+                  value={params.fiscal_year_id}
+                  onValueChange={(v) => setParams({ ...params, fiscal_year_id: v, fiscal_month_id: 'all' })}
+                >
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="All Fiscal Years" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Fiscal Years</SelectItem>
+                    {options.fiscalYears.map((y) => (
+                      <SelectItem key={y.id} value={String(y.id)}>
+                        {y.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fiscal Month</label>
+                <Select
+                  value={params.fiscal_month_id}
+                  onValueChange={(v) => setParams({ ...params, fiscal_month_id: v })}
+                  disabled={params.fiscal_year_id === 'all'}
+                >
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="All Fiscal Months" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Fiscal Months</SelectItem>
+                    {filteredFiscalMonths.map((m) => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        {m.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

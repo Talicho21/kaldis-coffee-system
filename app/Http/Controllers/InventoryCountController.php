@@ -110,12 +110,12 @@ class InventoryCountController extends Controller
         $inventoryCounts = $query->orderByDesc('id')->paginate($perPage)->withQueryString();
 
         // Cache dropdown data for 10 minutes
-        $branches = $canManageAllBranches 
-            ? Cache::remember('branches_all', 600, fn() => Branch::all(['id', 'name']))
+        $branches = $canManageAllBranches
+            ? Cache::remember('branches_all', 600, fn() => Branch::orderBy('name')->get(['id', 'name']))
             : [];
-        
-        $childCategories = Cache::remember('child_categories_active', 600, fn() => 
-            ChildCategory::where('status', 'Active')->get(['id', 'child_name'])
+
+        $childCategories = Cache::remember('child_categories_active', 600, fn() =>
+            ChildCategory::where('status', 'Active')->orderBy('child_name')->get(['id', 'child_name'])
         );
 
         return Inertia::render('inventory-counts/index', [
@@ -149,17 +149,17 @@ class InventoryCountController extends Controller
         $canManageAllBranches = $user->can('manage all branches inventory');
 
         // Cache dropdown data for 10 minutes
-        $allBranches = Cache::remember('branches_all', 600, fn() => Branch::all(['id', 'name']));
-        $branches = $canManageAllBranches 
-            ? $allBranches 
+        $allBranches = Cache::remember('branches_all', 600, fn() => Branch::orderBy('name')->get(['id', 'name']));
+        $branches = $canManageAllBranches
+            ? $allBranches
             : $allBranches->where('id', $userBranchId)->values();
-        
-        $inventoryPeriods = Cache::remember('inventory_periods_active', 600, fn() => 
+
+        $inventoryPeriods = Cache::remember('inventory_periods_active', 600, fn() =>
             InventoryPeriod::where('status', 'active')->get(['id', 'inventory_period_name'])
         );
-        
-        $childCategories = Cache::remember('child_categories_active', 600, fn() => 
-            ChildCategory::where('status', 'Active')->get(['id', 'child_name'])
+
+        $childCategories = Cache::remember('child_categories_active', 600, fn() =>
+            ChildCategory::where('status', 'Active')->orderBy('child_name')->get(['id', 'child_name'])
         );
         
         $products = Cache::remember('products_active', 600, fn() => 
@@ -277,9 +277,9 @@ class InventoryCountController extends Controller
                 'childCategory:id,child_name',
                 'product:id,product_name',
             ]),
-            'branches' => $canManageAllBranches ? Branch::all(['id', 'name']) : Branch::where('id', $userBranchId)->get(['id', 'name']),
+            'branches' => $canManageAllBranches ? Branch::orderBy('name')->get(['id', 'name']) : Branch::where('id', $userBranchId)->get(['id', 'name']),
             'inventoryPeriods' => InventoryPeriod::where('status', 'active')->get(['id', 'inventory_period_name']),
-            'childCategories' => ChildCategory::where('status', 'Active')->get(['id', 'child_name']),
+            'childCategories' => ChildCategory::where('status', 'Active')->orderBy('child_name')->get(['id', 'child_name']),
             'products' => Product::with('childCategory:id,child_name')->get(['id', 'product_name', 'child_category_id']),
             'canManageAllBranches' => $canManageAllBranches,
         ]);

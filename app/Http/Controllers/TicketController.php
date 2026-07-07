@@ -10,6 +10,8 @@ use App\Http\Requests\TicketStoreRequest;
 use App\Http\Requests\TicketAssignRequest;
 use App\Http\Requests\TicketRateRequest;
 use App\Models\Department;
+use App\Models\FiscalMonth;
+use App\Models\FiscalYear;
 use App\Models\Ticket;
 use App\Models\TicketAsset;
 use App\Models\TicketMainCategory;
@@ -69,6 +71,8 @@ class TicketController extends Controller
             ->when($request->severity, fn($q, $v) => $q->where('severity', $v))
             ->when($request->priority, fn($q, $v) => $q->where('priority', $v))
             ->when($request->main_category_id, fn($q, $v) => $q->where('ticket_main_category_id', $v))
+            ->when($request->fiscal_year_id, fn($q, $v) => $q->where('fiscal_year_id', $v))
+            ->when($request->fiscal_month_id, fn($q, $v) => $q->where('fiscal_month_id', $v))
             ->when($request->start_date, fn($q, $v) => $q->whereDate('created_at', '>=', $v))
             ->when($request->end_date, fn($q, $v) => $q->whereDate('created_at', '<=', $v));
 
@@ -80,7 +84,7 @@ class TicketController extends Controller
         // 3. Filter Options for UI
         return Inertia::render('tickets/index', [
             'tickets' => $tickets,
-            'filters' => $request->only(['search', 'status', 'department_id', 'severity', 'main_category_id', 'start_date', 'end_date']),
+            'filters' => $request->only(['search', 'status', 'department_id', 'severity', 'main_category_id', 'fiscal_year_id', 'fiscal_month_id', 'start_date', 'end_date']),
             'can_create' => $user->can('ticket.create'),
             'options' => [
                 'statuses' => array_column(TicketStatus::cases(), 'value'),
@@ -88,6 +92,8 @@ class TicketController extends Controller
                 'priorities' => array_column(TicketPriority::cases(), 'value'),
                 'departments' => Department::select('id', 'name')->orderBy('name')->get(),
                 'categories' => TicketMainCategory::select('id', 'name')->orderBy('name')->get(),
+                'fiscalYears' => FiscalYear::all(['id', 'name']),
+                'fiscalMonths' => FiscalMonth::all(['id', 'name', 'fiscal_year_id']),
             ]
         ]);
     }
@@ -160,6 +166,9 @@ class TicketController extends Controller
             // Beneficiary selection
             'branches' => \App\Models\Branch::orderBy('name')->get(['id', 'name']),
             'allDepartments' => Department::orderBy('name')->get(['id', 'name']),
+            // Fiscal Year/Month selection (Purchase Request only)
+            'fiscalYears' => FiscalYear::all(['id', 'name']),
+            'fiscalMonths' => FiscalMonth::all(['id', 'name', 'fiscal_year_id']),
         ]);
     }
 
@@ -251,6 +260,8 @@ class TicketController extends Controller
             'ratings',
             'productRequests.product.childCategory',
             'productRequests.sparePart.category',
+            'fiscalYear:id,name',
+            'fiscalMonth:id,name,fiscal_year_id',
         ]);
         $currentAssignment = $ticket->assignments()->where('is_current', true)->with('assignee')->first();
         $staffOptions = User::whereHas('employee', fn($q) => $q->where('department_id', $ticket->department_id))
@@ -302,7 +313,7 @@ class TicketController extends Controller
 
     public function downloadProductsPdf(Ticket $ticket)
     {
-        $ticket->load(['productRequests.product.childCategory', 'productRequests.sparePart.category', 'department', 'subCategory', 'mainCategory', 'requestorBranch', 'beneficiaryBranch', 'beneficiaryDepartment']);
+        $ticket->load(['productRequests.product.childCategory', 'productRequests.sparePart.category', 'department', 'subCategory', 'mainCategory', 'requestorBranch', 'beneficiaryBranch', 'beneficiaryDepartment', 'fiscalYear:id,name', 'fiscalMonth:id,name,fiscal_year_id']);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.requested-products', compact('ticket'));
 

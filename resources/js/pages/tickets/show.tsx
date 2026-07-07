@@ -94,6 +94,10 @@ type Ticket = {
   beneficiaryBranch?: { name: string } | null;
   beneficiary_department?: { name: string } | null;
   beneficiaryDepartment?: { name: string } | null;
+  fiscal_year?: { name: string } | null;
+  fiscalYear?: { name: string } | null;
+  fiscal_month?: { name: string } | null;
+  fiscalMonth?: { name: string } | null;
   activity_logs: Activity[];
   status_history: StatusHistory[];
   preferred_deadline?: string | null;
@@ -335,6 +339,17 @@ export default function TicketShow() {
                     <Tag className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">Sub Category:</span>
                     <span className="text-sm">{ticket.sub_category?.name ?? ticket.subCategory?.name ?? '—'}</span>
+                  </div>
+                )}
+
+                {(ticket.fiscal_year?.name ?? ticket.fiscalYear?.name) && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Fiscal Period:</span>
+                    <span className="text-sm">
+                      {ticket.fiscal_year?.name ?? ticket.fiscalYear?.name}
+                      {(ticket.fiscal_month?.name ?? ticket.fiscalMonth?.name) && ` — ${ticket.fiscal_month?.name ?? ticket.fiscalMonth?.name}`}
+                    </span>
                   </div>
                 )}
 

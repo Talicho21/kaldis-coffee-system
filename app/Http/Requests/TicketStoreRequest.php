@@ -55,6 +55,14 @@ class TicketStoreRequest extends FormRequest
                 'exists:branches,id'
             ],
             'beneficiary_department_id' => ['nullable', 'exists:departments,id'],
+            'fiscal_year_id' => [
+                request('ticket_main_category_id') == 26 ? 'required' : 'nullable',
+                'exists:fiscal_years,id'
+            ],
+            'fiscal_month_id' => [
+                request('ticket_main_category_id') == 26 ? 'required' : 'nullable',
+                'exists:fiscal_months,id'
+            ],
         ];
     }
 }

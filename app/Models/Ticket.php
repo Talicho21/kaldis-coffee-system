@@ -43,6 +43,8 @@ class Ticket extends Model
         'done_at',
         'closed_at',
         'parent_ticket_id',
+        'fiscal_year_id',
+        'fiscal_month_id',
     ];
 
     protected $casts = [
@@ -70,6 +72,16 @@ class Ticket extends Model
     public function beneficiaryDepartment(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'beneficiary_department_id');
+    }
+
+    public function fiscalYear(): BelongsTo
+    {
+        return $this->belongsTo(FiscalYear::class);
+    }
+
+    public function fiscalMonth(): BelongsTo
+    {
+        return $this->belongsTo(FiscalMonth::class);
     }
 
     public function department(): BelongsTo
