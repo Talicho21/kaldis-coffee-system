@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\ExternalLinkSection;
+use App\Support\ExpenseBudgetAccess;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -48,7 +49,10 @@ class HandleInertiaRequests extends Middleware {
 			'auth' => [
 				'user' => $request->user(),
 				'permissions' => $permissions,
-				'roles' => $request->user() ? $request->user()->getRoleNames() : []
+				'roles' => $request->user() ? $request->user()->getRoleNames() : [],
+				'canManageExpenseBudget' => $request->user()
+					? ExpenseBudgetAccess::canManage($request->user())
+					: false,
 			],
 
 			'ziggy' => fn(): array => [

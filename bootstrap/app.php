@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'role' => RoleMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'expense_budget.manage_window' => \App\Http\Middleware\EnsureExpenseBudgetManageWindow::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
