@@ -368,6 +368,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Pre-Order Targets
     Route::resource('pre-order-targets', PreOrderTargetController::class)->except(['show', 'create', 'edit']);
+
+// Sales Budget Routes
+    Route::prefix('sales-budgets')->name('sales-budgets.')->group(function () {
+        Route::get('/', [App\Http\Controllers\SalesBudgetController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\SalesBudgetController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\SalesBudgetController::class, 'store'])->name('store');
+        Route::get('/check', [App\Http\Controllers\SalesBudgetController::class, 'check'])->name('check');
+        Route::get('/logs', [App\Http\Controllers\SalesBudgetController::class, 'logs'])->name('logs');
+        Route::get('/prev-expense', [App\Http\Controllers\SalesBudgetController::class, 'getPrevExpense'])->name('prev-expense');
+        Route::get('/{salesBudget}/edit', [App\Http\Controllers\SalesBudgetController::class, 'edit'])->name('edit');
+        Route::put('/{salesBudget}', [App\Http\Controllers\SalesBudgetController::class, 'update'])->name('update');
+        Route::delete('/{salesBudget}', [App\Http\Controllers\SalesBudgetController::class, 'destroy'])->name('destroy');
+    });
 });
 
 require __DIR__ . '/settings.php';

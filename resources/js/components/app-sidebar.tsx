@@ -190,6 +190,15 @@ const baseSections: NavSection[] = [
       { title: 'Spare Parts', href: '/spare-parts', icon: Package, permission: 'view spare parts' },
     ],
   },
+  {
+    label: 'Sales Budget',
+    icon: TrendingUp,
+    items: [
+      { title: 'Add New Budget', href: '/sales-budgets/create', icon: ClipboardList, permission: 'manage sales budgets' },
+      { title: 'View Budgets', href: '/sales-budgets', icon: BarChart3, permission: 'manage sales budgets' },
+      { title: 'Action Logs', href: '/sales-budgets/logs', icon: History, permission: 'manage sales budgets' },
+    ],
+  },
 ];
 const footerNavItems: NavItem[] = [];
 
