@@ -220,6 +220,14 @@ const baseSections: NavSection[] = [
             { title: 'Action Logs', href: '/budget/sales-budget/logs', icon: History, permission: 'manage sales budget' },
           ],
         },
+      {
+        label: 'Weekly Budget',
+        icon: CalendarDays,
+        items: [
+          { title: 'New Request', href: '/budget/weekly-budget/create', icon: Plus, permission: 'manage weekly budgets' },
+          { title: 'View Weekly Budgets', href: '/budget/weekly-budget', icon: List, permission: 'view weekly budgets' },
+        ],
+      },
     ],
   },
 ];

@@ -1,0 +1,1019 @@
+import TablePagination from '@/components/table-pagination';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
+import { type BreadcrumbItem } from '@/types';
+import type { Pagination } from '@/types/pagination';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { usePermission } from '@/hooks/user-permissions';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Check, ChevronsUpDown, Filter, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Weekly Budgets', href: '/budget/weekly-budget' },
+];
+
+type BranchOption = {
+    id: number;
+    name: string;
+    branch_code: string | null;
+};
+
+type DepartmentOption = {
+    id: number;
+    name: string;
+};
+
+type FiscalYearOption = {
+    id: number;
+    name: string;
+};
+
+type FiscalMonthOption = {
+    id: number;
+    name: string;
+    fiscal_year_id: number;
+};
+
+type WeeklyBudgetRow = {
+    id: number;
+    branch_id: number;
+    department_id: number | null;
+    fiscal_year_id: number;
+    fiscal_month_id: number;
+    branch: string | null;
+    department: string | null;
+    fiscal_year: string | null;
+    fiscal_month: string | null;
+    week_number: number;
+    week_start_date: string | null;
+    week_end_date: string | null;
+    request_type: string;
+    status_finance: string;
+    status_ceo: string;
+    amount: string | number;
+    description: string | null;
+};
+
+type EditFormState = {
+    request_type: string;
+    branch_id: string;
+    department_id: string;
+    fiscal_year_id: string;
+    fiscal_month_id: string;
+    week_number: string;
+    week_start_date: string;
+    week_end_date: string;
+    amount: string;
+    description: string;
+};
+
+interface WeeklyBudgetList extends Pagination {
+    data: WeeklyBudgetRow[];
+}
+
+type IndexProps = {
+    items: WeeklyBudgetList;
+    branches: BranchOption[];
+    departments: DepartmentOption[];
+    fiscalYears: FiscalYearOption[];
+    fiscalMonths: FiscalMonthOption[];
+    requestTypes: string[];
+    statusFinances: string[];
+    statusCeos: string[];
+    request?: {
+        request_type?: string;
+        status_finance?: string;
+        status_ceo?: string;
+        branch_id?: string;
+        department_id?: string;
+        fiscal_year_id?: string;
+        fiscal_month_id?: string;
+    };
+};
+
+function formatCurrency(value: string | number | null | undefined): string {
+    const amount = Number(value ?? 0);
+
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(Number.isNaN(amount) ? 0 : amount);
+}
+
+function isHeadOfficeBranch(branch: BranchOption | null | undefined): boolean {
+    if (!branch) {
+        return false;
+    }
+
+    if (branch.branch_code?.toUpperCase() === 'HO') {
+        return true;
+    }
+
+    return branch.name.includes('Head Office');
+}
+
+function formatWeekLabel(weekNumber: number, startDate: string | null, endDate: string | null): string {
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const fmt = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return `Week ${weekNumber} (${fmt(start)} – ${fmt(end)})`;
+    }
+    return `Week ${weekNumber}`;
+}
+
+function statusBadge(status: string, variant: 'finance' | 'ceo') {
+    const colorMap: Record<string, string> = {
+        pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        approved: 'bg-green-50 text-green-700 border-green-200',
+        rejected: 'bg-red-50 text-red-700 border-red-200',
+        paid: 'bg-blue-50 text-blue-700 border-blue-200',
+    };
+
+    return (
+        <span
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm ${colorMap[status] ?? 'bg-slate-50 text-slate-700 border-slate-200'}`}
+        >
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+        </span>
+    );
+}
+
+function requestTypeBadge(type: string) {
+    const color =
+        type === 'urgent'
+            ? 'bg-red-50 text-red-700 border-red-200'
+            : 'bg-slate-50 text-slate-700 border-slate-200';
+
+    return (
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm ${color}`}>
+            {type.charAt(0).toUpperCase() + type.slice(1)}
+        </span>
+    );
+}
+
+function formatBudgetInput(value: string): string {
+    const sanitized = value.replace(/[^\d.]/g, '');
+    const [integerPart = '', ...decimalParts] = sanitized.split('.');
+    const decimalPart = decimalParts.join('').slice(0, 2);
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    if (decimalParts.length > 0) {
+        return `${formattedInteger}.${decimalPart}`;
+    }
+
+    return formattedInteger;
+}
+
+function parseFormattedNumber(value: string): number {
+    const cleaned = value.replace(/,/g, '').trim();
+    if (cleaned === '' || cleaned === '.') return Number.NaN;
+    return Number.parseFloat(cleaned);
+}
+
+function getISOWeekNumber(d: Date): number {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+function getMondayOfWeek(d: Date): Date {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(date.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+}
+
+function toDateString(d: Date): string {
+    return d.toISOString().split('T')[0];
+}
+
+export default function WeeklyBudgetIndex({
+    items,
+    branches,
+    departments,
+    fiscalYears,
+    fiscalMonths,
+    requestTypes,
+    statusFinances,
+    statusCeos,
+    request,
+}: IndexProps) {
+    const { flash } = usePage<{ flash: { message?: string } }>().props;
+    const { can } = usePermission();
+    const canManageWeeklyBudget = can('manage weekly budgets');
+
+    const [selectedRequestType, setSelectedRequestType] = useState<string>(request?.request_type ?? 'all');
+    const [selectedStatusFinance, setSelectedStatusFinance] = useState<string>(request?.status_finance ?? 'all');
+    const [selectedStatusCeo, setSelectedStatusCeo] = useState<string>(request?.status_ceo ?? 'all');
+    const [selectedBranch, setSelectedBranch] = useState<string>(request?.branch_id ?? 'all');
+    const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>(request?.fiscal_year_id ?? 'all');
+    const [selectedFiscalMonth, setSelectedFiscalMonth] = useState<string>(request?.fiscal_month_id ?? 'all');
+    const [openBranchFilter, setOpenBranchFilter] = useState(false);
+    const [openDepartmentFilter, setOpenDepartmentFilter] = useState(false);
+
+    const [deleteItemId, setDeleteItemId] = useState<number | null>(null);
+    const [editingItem, setEditingItem] = useState<WeeklyBudgetRow | null>(null);
+    const [editForm, setEditForm] = useState<EditFormState | null>(null);
+    const [editProcessing, setEditProcessing] = useState(false);
+    const [openEditBranch, setOpenEditBranch] = useState(false);
+    const [openEditDepartment, setOpenEditDepartment] = useState(false);
+
+    const editBranchOption = useMemo(
+        () =>
+            editForm?.branch_id
+                ? branches.find((branch) => branch.id.toString() === editForm.branch_id) ?? null
+                : null,
+        [editForm?.branch_id, branches],
+    );
+
+    const canEditDepartment = isHeadOfficeBranch(editBranchOption);
+
+    const editFilteredFiscalMonths = useMemo(() => {
+        if (!editForm?.fiscal_year_id) {
+            return fiscalMonths;
+        }
+        return fiscalMonths.filter((month) => String(month.fiscal_year_id) === editForm.fiscal_year_id);
+    }, [editForm?.fiscal_year_id, fiscalMonths]);
+
+    function confirmDeleteItem() {
+        if (deleteItemId === null) return;
+        router.delete(`/budget/weekly-budget/${deleteItemId}`, {
+            onSuccess: () => setDeleteItemId(null),
+        });
+    }
+
+    function openEditDialog(item: WeeklyBudgetRow) {
+        setEditingItem(item);
+        setEditForm({
+            request_type: item.request_type,
+            branch_id: String(item.branch_id),
+            department_id: item.department_id ? String(item.department_id) : '',
+            fiscal_year_id: String(item.fiscal_year_id),
+            fiscal_month_id: String(item.fiscal_month_id),
+            week_number: String(item.week_number),
+            week_start_date: item.week_start_date ?? '',
+            week_end_date: item.week_end_date ?? '',
+            amount: formatCurrency(item.amount),
+            description: item.description ?? '',
+        });
+        setOpenEditBranch(false);
+        setOpenEditDepartment(false);
+    }
+
+    function closeEditDialog() {
+        setEditingItem(null);
+        setEditForm(null);
+        setOpenEditBranch(false);
+        setOpenEditDepartment(false);
+    }
+
+    function handleEditBranchSelect(branch: BranchOption) {
+        if (!editForm) return;
+        const headOffice = isHeadOfficeBranch(branch);
+        setEditForm({
+            ...editForm,
+            branch_id: String(branch.id),
+            department_id: headOffice ? editForm.department_id : '',
+        });
+        setOpenEditBranch(false);
+    }
+
+    function handleEditDepartmentSelect(department: DepartmentOption) {
+        if (!editForm) return;
+        setEditForm({ ...editForm, department_id: String(department.id) });
+        setOpenEditDepartment(false);
+    }
+
+    function submitEditItem(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!editingItem || !editForm) return;
+
+        if (canEditDepartment && !editForm.department_id) {
+            toast.error('The department field is required when the selected branch is Head Office.');
+            return;
+        }
+
+        const parsedAmount = parseFormattedNumber(editForm.amount);
+        if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+            toast.error('Please enter a valid amount.');
+            return;
+        }
+
+        if (!editForm.week_start_date || !editForm.week_end_date || !editForm.week_number) {
+            toast.error('Please select a valid budget week date.');
+            return;
+        }
+
+        setEditProcessing(true);
+        router.put(
+            `/budget/weekly-budget/${editingItem.id}`,
+            {
+                ...editForm,
+                department_id: canEditDepartment ? editForm.department_id : null,
+                amount: parsedAmount,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => closeEditDialog(),
+                onFinish: () => setEditProcessing(false),
+            }
+        );
+    }
+
+    const selectedBranchOption = useMemo(
+        () => (selectedBranch === 'all' ? null : branches.find((b) => b.id.toString() === selectedBranch) ?? null),
+        [selectedBranch, branches],
+    );
+
+    const selectedDepartmentOption = useMemo(
+        () => (selectedDepartment === 'all' ? null : departments.find((d) => d.id.toString() === selectedDepartment) ?? null),
+        [selectedDepartment, departments],
+    );
+
+    const canFilterByDepartment = isHeadOfficeBranch(selectedBranchOption);
+
+    const filteredFiscalMonths = useMemo(() => {
+        if (selectedFiscalYear === 'all') {
+            return fiscalMonths;
+        }
+        return fiscalMonths.filter((m) => String(m.fiscal_year_id) === selectedFiscalYear);
+    }, [fiscalMonths, selectedFiscalYear]);
+
+    useEffect(() => {
+        if (flash?.message) {
+            toast.success(flash.message);
+        }
+    }, [flash?.message]);
+
+    function buildFilterParams(): Record<string, string> {
+        const params: Record<string, string> = {};
+        if (selectedRequestType !== 'all') params.request_type = selectedRequestType;
+        if (selectedStatusFinance !== 'all') params.status_finance = selectedStatusFinance;
+        if (selectedStatusCeo !== 'all') params.status_ceo = selectedStatusCeo;
+        if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+        if (selectedDepartment !== 'all') params.department_id = selectedDepartment;
+        if (selectedFiscalYear !== 'all') params.fiscal_year_id = selectedFiscalYear;
+        if (selectedFiscalMonth !== 'all') params.fiscal_month_id = selectedFiscalMonth;
+        return params;
+    }
+
+    function applyFilters(overrides: Record<string, string> = {}) {
+        const params = { ...buildFilterParams(), ...overrides };
+        // Clean out 'all' values from overrides
+        Object.keys(params).forEach((key) => {
+            if (params[key] === 'all') delete params[key];
+        });
+        router.get('/budget/weekly-budget', params, { preserveState: true, replace: true });
+    }
+
+    function handleBranchFilterSelect(branchId: string) {
+        setOpenBranchFilter(false);
+        setSelectedBranch(branchId);
+        setSelectedDepartment('all');
+        applyFilters({ branch_id: branchId, department_id: 'all' });
+    }
+
+    function handleDepartmentFilterSelect(departmentId: string) {
+        setOpenDepartmentFilter(false);
+        setSelectedDepartment(departmentId);
+        applyFilters({ department_id: departmentId });
+    }
+
+    function handleFiscalYearChange(value: string) {
+        setSelectedFiscalYear(value);
+        setSelectedFiscalMonth('all');
+        applyFilters({ fiscal_year_id: value, fiscal_month_id: 'all' });
+    }
+
+    function handleFiscalMonthChange(value: string) {
+        setSelectedFiscalMonth(value);
+        applyFilters({ fiscal_month_id: value });
+    }
+
+    function handleRequestTypeChange(value: string) {
+        setSelectedRequestType(value);
+        applyFilters({ request_type: value });
+    }
+
+    function handleStatusFinanceChange(value: string) {
+        setSelectedStatusFinance(value);
+        applyFilters({ status_finance: value });
+    }
+
+    function handleStatusCeoChange(value: string) {
+        setSelectedStatusCeo(value);
+        applyFilters({ status_ceo: value });
+    }
+
+    function clearFilters() {
+        setSelectedRequestType('all');
+        setSelectedStatusFinance('all');
+        setSelectedStatusCeo('all');
+        setSelectedBranch('all');
+        setSelectedDepartment('all');
+        setSelectedFiscalYear('all');
+        setSelectedFiscalMonth('all');
+        router.get('/budget/weekly-budget', {}, { preserveState: true, replace: true });
+    }
+
+    const hasActiveFilters =
+        selectedRequestType !== 'all' ||
+        selectedStatusFinance !== 'all' ||
+        selectedStatusCeo !== 'all' ||
+        selectedBranch !== 'all' ||
+        selectedDepartment !== 'all' ||
+        selectedFiscalYear !== 'all' ||
+        selectedFiscalMonth !== 'all';
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Weekly Budgets" />
+
+            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold">Weekly Budgets</h1>
+                    <Button asChild>
+                        <Link href="/budget/weekly-budget/create">
+                            <Plus className="mr-1 size-4" />
+                            New Request
+                        </Link>
+                    </Button>
+                </div>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Filter className="size-4 text-muted-foreground" />
+                            Filters
+                        </CardTitle>
+                        <div className="flex flex-wrap items-end gap-3 pt-2">
+                            <Select value={selectedRequestType} onValueChange={handleRequestTypeChange}>
+                                <SelectTrigger className="w-[160px]">
+                                    <SelectValue placeholder="All Types" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Types</SelectItem>
+                                    {requestTypes.map((t) => (
+                                        <SelectItem key={t} value={t}>
+                                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={selectedStatusFinance} onValueChange={handleStatusFinanceChange}>
+                                <SelectTrigger className="w-[170px]">
+                                    <SelectValue placeholder="All Status (Finance)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status (Finance)</SelectItem>
+                                    {statusFinances.map((s) => (
+                                        <SelectItem key={s} value={s}>
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={selectedStatusCeo} onValueChange={handleStatusCeoChange}>
+                                <SelectTrigger className="w-[160px]">
+                                    <SelectValue placeholder="All Status (CEO)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status (CEO)</SelectItem>
+                                    {statusCeos.map((s) => (
+                                        <SelectItem key={s} value={s}>
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Popover open={openBranchFilter} onOpenChange={setOpenBranchFilter}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className="w-[180px] justify-between font-normal"
+                                    >
+                                        {selectedBranchOption?.name ?? 'All Branches'}
+                                        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                    <Command>
+                                        <CommandInput placeholder="Search branches..." />
+                                        <CommandList className="max-h-60">
+                                            <CommandEmpty>No branches found.</CommandEmpty>
+                                            <CommandGroup>
+                                                <CommandItem
+                                                    value="All Branches"
+                                                    onSelect={() => handleBranchFilterSelect('all')}
+                                                >
+                                                    <Check
+                                                        className={cn(
+                                                            'mr-2 size-4',
+                                                            selectedBranch === 'all' ? 'opacity-100' : 'opacity-0',
+                                                        )}
+                                                    />
+                                                    All Branches
+                                                </CommandItem>
+                                                {branches.map((branch) => (
+                                                    <CommandItem
+                                                        key={branch.id}
+                                                        value={branch.name}
+                                                        onSelect={() => handleBranchFilterSelect(branch.id.toString())}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                'mr-2 size-4',
+                                                                selectedBranch === branch.id.toString()
+                                                                    ? 'opacity-100'
+                                                                    : 'opacity-0',
+                                                            )}
+                                                        />
+                                                        {branch.name}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+
+                            <Popover open={openDepartmentFilter} onOpenChange={setOpenDepartmentFilter}>
+                                <div className={cn(!canFilterByDepartment && 'cursor-not-allowed')}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            className="w-[180px] justify-between font-normal"
+                                            disabled={!canFilterByDepartment}
+                                        >
+                                            {selectedDepartmentOption?.name ?? 'All Departments'}
+                                            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                </div>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                    <Command>
+                                        <CommandInput placeholder="Search departments..." />
+                                        <CommandList className="max-h-60">
+                                            <CommandEmpty>No departments found.</CommandEmpty>
+                                            <CommandGroup>
+                                                <CommandItem
+                                                    value="All Departments"
+                                                    onSelect={() => handleDepartmentFilterSelect('all')}
+                                                >
+                                                    <Check
+                                                        className={cn(
+                                                            'mr-2 size-4',
+                                                            selectedDepartment === 'all' ? 'opacity-100' : 'opacity-0',
+                                                        )}
+                                                    />
+                                                    All Departments
+                                                </CommandItem>
+                                                {departments.map((department) => (
+                                                    <CommandItem
+                                                        key={department.id}
+                                                        value={department.name}
+                                                        onSelect={() =>
+                                                            handleDepartmentFilterSelect(department.id.toString())
+                                                        }
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                'mr-2 size-4',
+                                                                selectedDepartment === department.id.toString()
+                                                                    ? 'opacity-100'
+                                                                    : 'opacity-0',
+                                                            )}
+                                                        />
+                                                        {department.name}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandGroup>
+                                        </CommandList>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+
+                            <Select value={selectedFiscalYear} onValueChange={handleFiscalYearChange}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="All Fiscal Years" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Fiscal Years</SelectItem>
+                                    {fiscalYears.map((year) => (
+                                        <SelectItem key={year.id} value={year.id.toString()}>
+                                            {year.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={selectedFiscalMonth} onValueChange={handleFiscalMonthChange}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="All Fiscal Months" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Fiscal Months</SelectItem>
+                                    {filteredFiscalMonths.map((month) => (
+                                        <SelectItem key={month.id} value={month.id.toString()}>
+                                            {month.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {hasActiveFilters && (
+                                <Button type="button" variant="secondary" onClick={clearFilters}>
+                                    <X className="mr-1 size-4" />
+                                    Clear Filters
+                                </Button>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <hr />
+                    <CardContent>
+                        <Table>
+                            <TableHeader className="bg-slate-500 dark:bg-slate-700">
+                                <TableRow>
+                                    <TableHead className="font-bold text-white">ID</TableHead>
+                                    <TableHead className="font-bold text-white">Branch</TableHead>
+                                    <TableHead className="font-bold text-white">Department</TableHead>
+                                    <TableHead className="font-bold text-white">Fiscal Year</TableHead>
+                                    <TableHead className="font-bold text-white">Fiscal Month</TableHead>
+                                    <TableHead className="font-bold text-white">Week</TableHead>
+                                    <TableHead className="font-bold text-white">Request Type</TableHead>
+                                    <TableHead className="font-bold text-white">Status (Finance)</TableHead>
+                                    <TableHead className="font-bold text-white">Status (CEO)</TableHead>
+                                    <TableHead className="font-bold text-white">Amount</TableHead>
+                                    <TableHead className="font-bold text-white">Desc</TableHead>
+                                    <TableHead className="font-bold text-white">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {items.data.map((item) => (
+                                    <TableRow key={item.id} className="odd:bg-slate-100 dark:odd:bg-slate-800">
+                                        <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
+                                        <TableCell>{item.branch ?? 'N/A'}</TableCell>
+                                        <TableCell>{item.department ?? '-'}</TableCell>
+                                        <TableCell>{item.fiscal_year ?? 'N/A'}</TableCell>
+                                        <TableCell>{item.fiscal_month ?? 'N/A'}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            {formatWeekLabel(item.week_number, item.week_start_date, item.week_end_date)}
+                                        </TableCell>
+                                        <TableCell>{requestTypeBadge(item.request_type)}</TableCell>
+                                        <TableCell>{statusBadge(item.status_finance, 'finance')}</TableCell>
+                                        <TableCell>{statusBadge(item.status_ceo, 'ceo')}</TableCell>
+                                        <TableCell className="whitespace-nowrap">{formatCurrency(item.amount)}</TableCell>
+                                        <TableCell>
+                                            <div className="max-w-xs truncate text-sm text-slate-600">
+                                                {item.description || '-'}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {canManageWeeklyBudget && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => openEditDialog(item)}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => setDeleteItemId(item.id)}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                    {items.data.length > 0 ? (
+                        <TablePagination total={items.total} from={items.from} to={items.to} links={items.links} />
+                    ) : (
+                        <div className="flex h-full items-center justify-center py-8">No Results Found!</div>
+                    )}
+                </Card>
+            </div>
+
+            <Dialog open={deleteItemId !== null} onOpenChange={(open) => !open && setDeleteItemId(null)}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <Trash2 className="size-5" />
+                            Confirm Deletion
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this weekly budget? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => setDeleteItemId(null)}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={confirmDeleteItem}>
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={editingItem !== null} onOpenChange={(open) => !open && closeEditDialog()}>
+                <DialogContent
+                    className="overflow-visible sm:max-w-2xl"
+                    onInteractOutside={(event) => {
+                        const target = event.target as HTMLElement | null;
+                        if (target?.closest('[data-radix-popper-content-wrapper], [data-radix-popover-content]')) {
+                            event.preventDefault();
+                        }
+                    }}
+                >
+                    <DialogHeader>
+                        <DialogTitle>Edit Weekly Budget</DialogTitle>
+                        <DialogDescription>Update the details of the selected weekly budget.</DialogDescription>
+                    </DialogHeader>
+                    {editForm && (
+                        <form onSubmit={submitEditItem} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_request_type">Request Type</Label>
+                                <Select
+                                    value={editForm.request_type}
+                                    onValueChange={(val) => setEditForm({
+                                        ...editForm,
+                                        request_type: val,
+                                        week_number: '',
+                                        week_start_date: '',
+                                        week_end_date: '',
+                                    })}
+                                >
+                                    <SelectTrigger id="edit_request_type">
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {requestTypes.map((t) => (
+                                            <SelectItem key={t} value={t}>
+                                                {t.charAt(0).toUpperCase() + t.slice(1)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Branch</Label>
+                                <Popover modal={false} open={openEditBranch} onOpenChange={setOpenEditBranch}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            className="w-full justify-between font-normal"
+                                        >
+                                            {editBranchOption?.name ?? 'Select branch'}
+                                            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent portalled={false} className="z-[100] w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Search branches..." />
+                                            <CommandList className="max-h-60">
+                                                <CommandEmpty>No branches found.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {branches.map((branch) => (
+                                                        <CommandItem
+                                                            key={branch.id}
+                                                            value={branch.name}
+                                                            className="cursor-pointer"
+                                                            onSelect={() => handleEditBranchSelect(branch)}
+                                                            onClick={() => handleEditBranchSelect(branch)}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    'mr-2 size-4',
+                                                                    editForm.branch_id === String(branch.id)
+                                                                        ? 'opacity-100'
+                                                                        : 'opacity-0',
+                                                                )}
+                                                            />
+                                                            {branch.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Department</Label>
+                                <Popover modal={false} open={openEditDepartment} onOpenChange={setOpenEditDepartment}>
+                                    <div className={cn(!canEditDepartment && 'cursor-not-allowed')}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                className="w-full justify-between font-normal"
+                                                disabled={!canEditDepartment}
+                                            >
+                                                {editForm.department_id
+                                                    ? departments.find(
+                                                          (d) => d.id.toString() === editForm.department_id,
+                                                      )?.name
+                                                    : 'Select department'}
+                                                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                    </div>
+                                    <PopoverContent portalled={false} className="z-[100] w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Search departments..." />
+                                            <CommandList className="max-h-60">
+                                                <CommandEmpty>No departments found.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {departments.map((department) => (
+                                                        <CommandItem
+                                                            key={department.id}
+                                                            value={department.name}
+                                                            className="cursor-pointer"
+                                                            onSelect={() => handleEditDepartmentSelect(department)}
+                                                            onClick={() => handleEditDepartmentSelect(department)}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    'mr-2 size-4',
+                                                                    editForm.department_id === String(department.id)
+                                                                        ? 'opacity-100'
+                                                                        : 'opacity-0',
+                                                                )}
+                                                            />
+                                                            {department.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_fiscal_year">Fiscal Year</Label>
+                                <Select
+                                    value={editForm.fiscal_year_id}
+                                    onValueChange={(val) => setEditForm({
+                                        ...editForm,
+                                        fiscal_year_id: val,
+                                        fiscal_month_id: '',
+                                        week_number: '',
+                                        week_start_date: '',
+                                        week_end_date: '',
+                                    })}
+                                >
+                                    <SelectTrigger id="edit_fiscal_year">
+                                        <SelectValue placeholder="Select year" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {fiscalYears.map((year) => (
+                                            <SelectItem key={year.id} value={String(year.id)}>
+                                                {year.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_fiscal_month">Fiscal Month</Label>
+                                <Select
+                                    value={editForm.fiscal_month_id}
+                                    onValueChange={(val) => setEditForm({
+                                        ...editForm,
+                                        fiscal_month_id: val,
+                                        week_number: '',
+                                        week_start_date: '',
+                                        week_end_date: '',
+                                    })}
+                                    disabled={!editForm.fiscal_year_id}
+                                >
+                                    <SelectTrigger id="edit_fiscal_month">
+                                        <SelectValue placeholder="Select month" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {editFilteredFiscalMonths.map((month) => (
+                                            <SelectItem key={month.id} value={String(month.id)}>
+                                                {month.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_budget_week">Budget Week Date</Label>
+                                <Input
+                                    id="edit_budget_week"
+                                    type="date"
+                                    disabled={!editForm.fiscal_month_id}
+                                    value={editForm.week_start_date}
+                                    onChange={(e) => {
+                                        const selectedDateStr = e.target.value;
+                                        if (!selectedDateStr) {
+                                            setEditForm({
+                                                ...editForm,
+                                                week_number: '',
+                                                week_start_date: '',
+                                                week_end_date: '',
+                                            });
+                                            return;
+                                        }
+                                        const dateObj = new Date(selectedDateStr);
+                                        if (!isNaN(dateObj.getTime())) {
+                                            const monday = getMondayOfWeek(dateObj);
+                                            const sunday = new Date(monday);
+                                            sunday.setDate(monday.getDate() + 6);
+                                            setEditForm({
+                                                ...editForm,
+                                                week_number: String(getISOWeekNumber(dateObj)),
+                                                week_start_date: toDateString(monday),
+                                                week_end_date: toDateString(sunday),
+                                            });
+                                        }
+                                    }}
+                                />
+                                {editForm.week_number && (
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        {formatWeekLabel(Number(editForm.week_number), editForm.week_start_date, editForm.week_end_date)}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="edit_amount">Amount</Label>
+                                <Input
+                                    id="edit_amount"
+                                    value={editForm.amount}
+                                    onChange={(e) => setEditForm({ ...editForm, amount: formatBudgetInput(e.target.value) })}
+                                    placeholder="0.00"
+                                />
+                            </div>
+
+                            <div className="space-y-2 sm:col-span-2">
+                                <Label htmlFor="edit_description">Description (Optional)</Label>
+                                <Textarea
+                                    id="edit_description"
+                                    value={editForm.description}
+                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                    rows={2}
+                                />
+                            </div>
+
+                            <div className="sm:col-span-2 mt-4 flex justify-end gap-2">
+                                <Button type="button" variant="outline" onClick={closeEditDialog} disabled={editProcessing}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={editProcessing}>
+                                    <Save className="mr-2 size-4" />
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </AppLayout>
+    );
+}
