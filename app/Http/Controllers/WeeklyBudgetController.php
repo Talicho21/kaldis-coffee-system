@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\WeeklyBudgetRequestType;
 use App\Enums\WeeklyBudgetStatusCeo;
+use App\Enums\WeeklyBudgetStatusDepartment;
 use App\Enums\WeeklyBudgetStatusFinance;
 use App\Models\Branch;
 use App\Models\Department;
@@ -33,6 +34,7 @@ class WeeklyBudgetController extends Controller
         $query
             ->when(request('request_type'), fn ($q, $v) => $q->where('request_type', $v))
             ->when(request('status_finance'), fn ($q, $v) => $q->where('status_finance', $v))
+            ->when(request('status_department'), fn ($q, $v) => $q->where('status_department', $v))
             ->when(request('status_ceo'), fn ($q, $v) => $q->where('status_ceo', $v))
             ->when(request('branch_id'), fn ($q, $v) => $q->where('branch_id', $v))
             ->when(request('department_id'), fn ($q, $v) => $q->where('department_id', $v))
@@ -58,9 +60,11 @@ class WeeklyBudgetController extends Controller
                 'week_end_date'   => $wb->week_end_date?->toDateString(),
                 'request_type'   => $wb->request_type?->value,
                 'status_finance' => $wb->status_finance?->value,
+                'status_department' => $wb->status_department?->value,
                 'status_ceo'     => $wb->status_ceo?->value,
                 'amount'         => $wb->amount,
                 'description'    => $wb->description,
+                'note'           => $wb->note,
             ]);
 
         $branches = Branch::query()
@@ -80,10 +84,12 @@ class WeeklyBudgetController extends Controller
             'fiscalMonths' => $this->fiscalMonthOptions(),
             'requestTypes'  => array_column(WeeklyBudgetRequestType::cases(), 'value'),
             'statusFinances' => array_column(WeeklyBudgetStatusFinance::cases(), 'value'),
+            'statusDepartments' => array_column(WeeklyBudgetStatusDepartment::cases(), 'value'),
             'statusCeos'    => array_column(WeeklyBudgetStatusCeo::cases(), 'value'),
             'request'     => request()->only([
                 'request_type',
                 'status_finance',
+                'status_department',
                 'status_ceo',
                 'branch_id',
                 'department_id',
@@ -111,12 +117,30 @@ class WeeklyBudgetController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        $today = now()->toDateString();
+
+        $currentFiscalYear = FiscalYear::query()
+            ->where('gregorian_start_date', '<=', $today)
+            ->where('gregorian_end_date', '>=', $today)
+            ->first();
+
+        $currentFiscalMonth = $currentFiscalYear
+            ? FiscalMonth::query()
+                ->where('fiscal_year_id', $currentFiscalYear->id)
+                ->where('gregorian_start_date', '<=', $today)
+                ->where('gregorian_end_date', '>=', $today)
+                ->first()
+            : null;
+
         return Inertia::render('Budget/WeeklyBudget/Create', [
-            'branches'    => $branches,
-            'departments' => $departments,
-            'fiscalYears' => $this->fiscalYearOptions(),
-            'fiscalMonths' => $this->fiscalMonthOptions(),
-            'today'       => now()->toDateString(), // Gregorian date for week calculation on the frontend
+            'branches'             => $branches,
+            'departments'          => $departments,
+            'fiscalYears'          => $this->fiscalYearOptions(),
+            'fiscalMonths'         => $this->fiscalMonthOptions(),
+            'today'                => $today,
+            'currentFiscalYearId'  => $currentFiscalYear?->id,
+            'currentFiscalMonthId' => $currentFiscalMonth?->id,
+            'request'              => request()->only(['department_id', 'branch_id']),
         ]);
     }
 
@@ -125,8 +149,8 @@ class WeeklyBudgetController extends Controller
         abort_unless(auth()->user()->can('manage weekly budgets'), 403);
 
         $validated = $request->validate([
-            'branch_id'      => ['required', 'exists:branches,id'],
-            'department_id'  => ['nullable', 'exists:departments,id'],
+            'department_id'  => ['required', 'exists:departments,id'],
+            'branch_id'      => ['nullable', 'exists:branches,id'],
             'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
             'fiscal_month_id' => [
                 'required',
@@ -141,24 +165,29 @@ class WeeklyBudgetController extends Controller
             'request_type'   => ['required', Rule::enum(WeeklyBudgetRequestType::class)],
             'amount'         => ['required', 'numeric', 'min:0'],
             'description'    => ['nullable', 'string'],
+            'note'           => ['nullable', 'string'],
         ]);
 
-        $branch = Branch::findOrFail($validated['branch_id']);
-        if ($this->isHeadOfficeBranch($branch) && empty($validated['department_id'])) {
+        $department = Department::findOrFail($validated['department_id']);
+        $deptName = strtolower($department->name);
+        $isBranchEnabled = str_contains($deptName, 'operation') || str_contains($deptName, 'hr') || str_contains($deptName, 'human resource');
+
+        if ($isBranchEnabled && empty($validated['branch_id'])) {
             return back()->withErrors([
-                'department_id' => 'The department field is required when the selected branch is Head Office.',
+                'branch_id' => 'The branch field is required for the selected department.',
             ])->withInput();
         }
 
-        if (! $this->isHeadOfficeBranch($branch)) {
-            $validated['department_id'] = null;
+        if (! $isBranchEnabled) {
+            $validated['branch_id'] = null;
         }
 
         WeeklyBudget::create([
             ...$validated,
-            'status_finance' => WeeklyBudgetStatusFinance::Pending->value,
-            'status_ceo'     => WeeklyBudgetStatusCeo::Pending->value,
-            'created_by'     => auth()->id(),
+            'status_finance'    => WeeklyBudgetStatusFinance::Pending->value,
+            'status_department' => WeeklyBudgetStatusDepartment::Pending->value,
+            'status_ceo'        => WeeklyBudgetStatusCeo::Pending->value,
+            'created_by'        => auth()->id(),
         ]);
 
         return redirect()
@@ -171,8 +200,8 @@ class WeeklyBudgetController extends Controller
         abort_unless(auth()->user()->can('manage weekly budgets'), 403);
 
         $validated = $request->validate([
-            'branch_id'      => ['required', 'exists:branches,id'],
-            'department_id'  => ['nullable', 'exists:departments,id'],
+            'department_id'  => ['required', 'exists:departments,id'],
+            'branch_id'      => ['nullable', 'exists:branches,id'],
             'fiscal_year_id' => ['required', 'integer', 'exists:fiscal_years,id'],
             'fiscal_month_id' => [
                 'required',
@@ -187,17 +216,21 @@ class WeeklyBudgetController extends Controller
             'request_type'   => ['required', Rule::enum(WeeklyBudgetRequestType::class)],
             'amount'         => ['required', 'numeric', 'min:0'],
             'description'    => ['nullable', 'string'],
+            'note'           => ['nullable', 'string'],
         ]);
 
-        $branch = Branch::findOrFail($validated['branch_id']);
-        if ($this->isHeadOfficeBranch($branch) && empty($validated['department_id'])) {
+        $department = Department::findOrFail($validated['department_id']);
+        $deptName = strtolower($department->name);
+        $isBranchEnabled = str_contains($deptName, 'operation') || str_contains($deptName, 'hr') || str_contains($deptName, 'human resource');
+
+        if ($isBranchEnabled && empty($validated['branch_id'])) {
             return back()->withErrors([
-                'department_id' => 'The department field is required when the selected branch is Head Office.',
+                'branch_id' => 'The branch field is required for the selected department.',
             ])->withInput();
         }
 
-        if (! $this->isHeadOfficeBranch($branch)) {
-            $validated['department_id'] = null;
+        if (! $isBranchEnabled) {
+            $validated['branch_id'] = null;
         }
 
         $weeklyBudget->update($validated);
@@ -225,10 +258,11 @@ class WeeklyBudgetController extends Controller
     {
         return FiscalYear::query()
             ->orderByDesc('gregorian_start_date')
-            ->get(['id', 'name'])
+            ->get(['id', 'name', 'gregorian_start_date'])
             ->map(fn (FiscalYear $year) => [
-                'id'   => $year->id,
-                'name' => $year->name,
+                'id'                   => $year->id,
+                'name'                 => $year->name,
+                'gregorian_start_date' => $year->gregorian_start_date?->toDateString(),
             ])
             ->values();
     }

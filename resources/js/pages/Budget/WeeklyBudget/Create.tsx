@@ -34,6 +34,7 @@ type DepartmentOption = {
 type FiscalYearOption = {
 	id: number;
 	name: string;
+	gregorian_start_date: string | null; // YYYY-MM-DD
 };
 
 type FiscalMonthOption = {
@@ -56,6 +57,12 @@ type CreateProps = {
 	fiscalYears: FiscalYearOption[];
 	fiscalMonths: FiscalMonthOption[];
 	today: string; // Gregorian date from server, e.g. "2026-07-09"
+	currentFiscalYearId?: number | null;
+	currentFiscalMonthId?: number | null;
+	request?: {
+		department_id?: string;
+		branch_id?: string;
+	};
 };
 
 function isHeadOfficeBranch(branch: BranchOption | null): boolean {
@@ -106,14 +113,16 @@ function getMondayOfWeek(date: Date): Date {
 }
 
 /**
- * Returns the ISO week number for a given date.
+ * Returns the fiscal week number for a given Monday,
+ * counting from the Monday of the week that contains the fiscal year start date.
+ * Week 1 = the first week of the fiscal year.
  */
-function getISOWeekNumber(date: Date): number {
-	const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-	const dayNum = d.getUTCDay() || 7; // Make Sunday = 7
-	d.setUTCDate(d.getUTCDate() + 4 - dayNum); // Set to nearest Thursday
-	const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-	return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+function getFiscalWeekNumber(monday: Date, fiscalYearStartDate: Date): number {
+	// Anchor to the Monday of the week that contains the fiscal year start
+	const anchor = getMondayOfWeek(fiscalYearStartDate);
+	const diffMs = monday.getTime() - anchor.getTime();
+	const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+	return Math.floor(diffDays / 7) + 1;
 }
 
 /**
@@ -127,25 +136,30 @@ function toDateString(d: Date): string {
 }
 
 /**
- * Format a Date to DD/MM
+ * Format a Date as "Month DD" (e.g. "July 13").
  */
-function toShortDate(d: Date): string {
-	return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+function toMonthDayLabel(d: Date): string {
+	const months = [
+		'January', 'February', 'March', 'April', 'May', 'June',
+		'July', 'August', 'September', 'October', 'November', 'December',
+	];
+	return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
 /**
- * Build the week option for a given Monday.
+ * Build the week option for a given Monday, using the fiscal year start date
+ * to derive the fiscal week number.
  */
-function buildWeekOption(monday: Date, isDisabled: boolean): WeekOption {
+function buildWeekOption(monday: Date, isDisabled: boolean, fiscalYearStartDate: Date): WeekOption {
 	const sunday = new Date(monday);
 	sunday.setDate(monday.getDate() + 6);
-	const weekNumber = getISOWeekNumber(monday);
+	const weekNumber = getFiscalWeekNumber(monday, fiscalYearStartDate);
 
 	return {
 		weekNumber,
 		startDate: toDateString(monday),
 		endDate: toDateString(sunday),
-		label: `Week ${weekNumber} (${toShortDate(monday)} – ${toShortDate(sunday)})`,
+		label: `Week ${weekNumber} (${toMonthDayLabel(monday)} – ${toMonthDayLabel(sunday)})`,
 		disabled: isDisabled,
 	};
 }
@@ -153,44 +167,68 @@ function buildWeekOption(monday: Date, isDisabled: boolean): WeekOption {
 /**
  * Get available week options based on request type and today's date.
  *
- * Urgent: current week, selectable only Mon–Thu (day of week 1–4)
- * Normal: next week, selectable only Mon–Thu of the current week
+ * Urgent: two options — next week and the week after.
+ *   Deadline: Sunday (always open; both stay selectable all week).
  *
- * After Thursday, the option is disabled.
+ * Normal: two options — next week and the week after.
+ *   Deadline: Friday.
+ *   Exception: on Saturday or Sunday, the immediate next week is disabled;
+ *   only the week after remains selectable.
  */
-function getWeekOptions(requestType: string, todayStr: string): WeekOption[] {
+function getWeekOptions(requestType: string, todayStr: string, fiscalYearStartDate: Date): WeekOption[] {
 	if (!requestType) {
 		return [];
 	}
 
 	const today = new Date(todayStr + 'T00:00:00');
-	const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri, 6=Sat
-	const isPastThursday = dayOfWeek === 0 || dayOfWeek >= 5; // Fri, Sat, or Sun
+	const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
 
 	const currentMonday = getMondayOfWeek(today);
 
+	// Next week's Monday
+	const nextMonday = new Date(currentMonday);
+	nextMonday.setDate(currentMonday.getDate() + 7);
+
+	// Week after next's Monday
+	const weekAfterNextMonday = new Date(currentMonday);
+	weekAfterNextMonday.setDate(currentMonday.getDate() + 14);
+
 	if (requestType === 'urgent') {
-		// Show current week, disable after Thursday
-		return [buildWeekOption(currentMonday, isPastThursday)];
+		// Both options are always enabled (deadline = Sunday, i.e. never disabled within the week)
+		return [
+			buildWeekOption(nextMonday, false, fiscalYearStartDate),
+			buildWeekOption(weekAfterNextMonday, false, fiscalYearStartDate),
+		];
 	}
 
 	if (requestType === 'normal') {
-		// Show next week, disable after Thursday of current week
-		const nextMonday = new Date(currentMonday);
-		nextMonday.setDate(currentMonday.getDate() + 7);
-		return [buildWeekOption(nextMonday, isPastThursday)];
+		// Deadline is Friday (day 5). On Sat (6) or Sun (0) the immediate next week is disabled.
+		const isWeekendCutoff = dayOfWeek === 0 || dayOfWeek === 6;
+		return [
+			buildWeekOption(nextMonday, isWeekendCutoff, fiscalYearStartDate),
+			buildWeekOption(weekAfterNextMonday, false, fiscalYearStartDate),
+		];
 	}
 
 	return [];
 }
 
-export default function CreateWeeklyBudget({ branches, departments, fiscalYears, fiscalMonths, today }: CreateProps) {
+export default function CreateWeeklyBudget({
+	branches,
+	departments,
+	fiscalYears,
+	fiscalMonths,
+	today,
+	currentFiscalYearId,
+	currentFiscalMonthId,
+	request,
+}: CreateProps) {
 	const { data, setData, post, processing, errors, clearErrors, setError, transform } = useForm({
-		request_type: '',
-		branch_id: '',
-		department_id: '',
-		fiscal_year_id: '',
-		fiscal_month_id: '',
+		request_type: 'normal',
+		branch_id: request?.branch_id || '',
+		department_id: request?.department_id || '',
+		fiscal_year_id: currentFiscalYearId ? String(currentFiscalYearId) : '',
+		fiscal_month_id: currentFiscalMonthId ? String(currentFiscalMonthId) : '',
 		week_number: '',
 		week_start_date: '',
 		week_end_date: '',
@@ -200,10 +238,18 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 
 	const [openBranch, setOpenBranch] = useState(false);
 	const [openDepartment, setOpenDepartment] = useState(false);
-	const [selectedBranch, setSelectedBranch] = useState<BranchOption | null>(null);
-	const [selectedDepartment, setSelectedDepartment] = useState<DepartmentOption | null>(null);
+	const [selectedBranch, setSelectedBranch] = useState<BranchOption | null>(
+		request?.branch_id ? branches.find((b) => String(b.id) === request.branch_id) || null : null,
+	);
+	const [selectedDepartment, setSelectedDepartment] = useState<DepartmentOption | null>(
+		request?.department_id ? departments.find((d) => String(d.id) === request.department_id) || null : null,
+	);
 
-	const isHeadOffice = isHeadOfficeBranch(selectedBranch);
+	const isBranchEnabled = useMemo(() => {
+		if (!selectedDepartment) return false;
+		const name = selectedDepartment.name.toLowerCase();
+		return name.includes('operation') || name.includes('hr') || name.includes('human resource');
+	}, [selectedDepartment]);
 
 	const filteredFiscalMonths = useMemo(() => {
 		if (!data.fiscal_year_id) {
@@ -213,11 +259,16 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 	}, [data.fiscal_year_id, fiscalMonths]);
 
 	const weekOptions = useMemo(() => {
-		if (!data.request_type || !data.fiscal_month_id) {
+		if (!data.request_type || !data.fiscal_month_id || !data.fiscal_year_id) {
 			return [];
 		}
-		return getWeekOptions(data.request_type, today);
-	}, [data.request_type, data.fiscal_month_id, today]);
+		const fiscalYear = fiscalYears.find((y) => String(y.id) === data.fiscal_year_id);
+		if (!fiscalYear?.gregorian_start_date) {
+			return [];
+		}
+		const fiscalYearStartDate = new Date(fiscalYear.gregorian_start_date + 'T00:00:00');
+		return getWeekOptions(data.request_type, today, fiscalYearStartDate);
+	}, [data.request_type, data.fiscal_month_id, data.fiscal_year_id, today, fiscalYears]);
 
 	// Reset week selection when request_type or fiscal_month changes
 	useEffect(() => {
@@ -231,23 +282,29 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 
 	function handleBranchSelect(branch: BranchOption) {
 		setSelectedBranch(branch);
-		setSelectedDepartment(null);
-		setData({
-			...data,
-			branch_id: String(branch.id),
-			department_id: '',
-		});
+		setData('branch_id', String(branch.id));
 		setOpenBranch(false);
 	}
 
 	function handleDepartmentSelect(department: DepartmentOption) {
 		setSelectedDepartment(department);
-		setData('department_id', String(department.id));
+		const name = department.name.toLowerCase();
+		const enabled = name.includes('operation') || name.includes('hr') || name.includes('human resource');
+
+		setData((prev) => ({
+			...prev,
+			department_id: String(department.id),
+			branch_id: enabled ? prev.branch_id : '',
+		}));
+
+		if (!enabled) {
+			setSelectedBranch(null);
+		}
 		setOpenDepartment(false);
 	}
 
 	function handleWeekSelect(value: string) {
-		const week = weekOptions.find((w) => String(w.weekNumber) === value);
+		const week = weekOptions.find((w) => w.startDate === value);
 		if (week) {
 			setData({
 				...data,
@@ -271,13 +328,13 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 			return;
 		}
 
-		if (!data.branch_id) {
-			setError('branch_id', 'The branch field is required.');
+		if (!data.department_id) {
+			setError('department_id', 'The department field is required.');
 			return;
 		}
 
-		if (isHeadOffice && !data.department_id) {
-			setError('department_id', 'The department field is required when the selected branch is Head Office.');
+		if (isBranchEnabled && !data.branch_id) {
+			setError('branch_id', 'The branch field is required for this department.');
 			return;
 		}
 
@@ -305,7 +362,8 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 		transform((formData) => ({
 			...formData,
 			amount: parseFormattedNumber(formData.amount),
-			department_id: isHeadOffice ? formData.department_id : null,
+			department_id: formData.department_id,
+			branch_id: isBranchEnabled ? formData.branch_id : null,
 		}));
 
 		post('/budget/weekly-budget', {
@@ -343,45 +401,65 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 						<form onSubmit={handleSubmit} className="space-y-6">
 							<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 								{/* Request Type */}
+
+								{/* Department */}
 								<div className="space-y-2">
-									<Label htmlFor="request_type">
-										Request Type <span className="text-red-500">*</span>
+									<Label>
+										Department <span className="text-red-500">*</span>
 									</Label>
-									<Select
-										value={data.request_type}
-										onValueChange={(value) =>
-											setData({
-												...data,
-												request_type: value,
-												week_number: '',
-												week_start_date: '',
-												week_end_date: '',
-											})
-										}
-									>
-										<SelectTrigger id="request_type">
-											<SelectValue placeholder="Select request type" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="urgent">Urgent</SelectItem>
-											<SelectItem value="normal">Normal</SelectItem>
-										</SelectContent>
-									</Select>
-									<InputError message={errors.request_type} />
+									<Popover open={openDepartment} onOpenChange={setOpenDepartment}>
+										<PopoverTrigger asChild>
+											<Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+												{selectedDepartment ? selectedDepartment.name : 'Select Department'}
+												<ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+											<Command>
+												<CommandInput placeholder="Search departments..." />
+												<CommandList className="max-h-60">
+													<CommandEmpty>No departments found.</CommandEmpty>
+													<CommandGroup>
+														{departments.map((department) => (
+															<CommandItem
+																key={department.id}
+																value={department.name}
+																onSelect={() => handleDepartmentSelect(department)}
+															>
+																<Check
+																	className={cn(
+																		'mr-2 size-4',
+																		data.department_id === String(department.id) ? 'opacity-100' : 'opacity-0',
+																	)}
+																/>
+																{department.name}
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
+									<InputError message={errors.department_id} />
 								</div>
 
 								{/* Branch */}
 								<div className="space-y-2">
-									<Label>
-										Branch <span className="text-red-500">*</span>
-									</Label>
+									<Label>Branch {isBranchEnabled && <span className="text-red-500">*</span>}</Label>
 									<Popover open={openBranch} onOpenChange={setOpenBranch}>
-										<PopoverTrigger asChild>
-											<Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-												{selectedBranch ? selectedBranch.name : 'Select branch...'}
-												<ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
+										<div className={cn(!isBranchEnabled && 'cursor-not-allowed')}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="w-full justify-between font-normal"
+													disabled={!isBranchEnabled}
+												>
+													{selectedBranch ? selectedBranch.name : 'Select branch...'}
+													<ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+										</div>
 										<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
 											<Command>
 												<CommandInput placeholder="Search branches..." />
@@ -411,50 +489,31 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 									<InputError message={errors.branch_id} />
 								</div>
 
-								{/* Department */}
 								<div className="space-y-2">
-									<Label>Department {isHeadOffice && <span className="text-red-500">*</span>}</Label>
-									<Popover open={openDepartment} onOpenChange={setOpenDepartment}>
-										<div className={cn(!isHeadOffice && 'cursor-not-allowed')}>
-											<PopoverTrigger asChild>
-												<Button
-													variant="outline"
-													role="combobox"
-													className="w-full justify-between font-normal"
-													disabled={!isHeadOffice}
-												>
-													{selectedDepartment ? selectedDepartment.name : 'Select Department'}
-													<ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-												</Button>
-											</PopoverTrigger>
-										</div>
-										<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search departments..." />
-												<CommandList className="max-h-60">
-													<CommandEmpty>No departments found.</CommandEmpty>
-													<CommandGroup>
-														{departments.map((department) => (
-															<CommandItem
-																key={department.id}
-																value={department.name}
-																onSelect={() => handleDepartmentSelect(department)}
-															>
-																<Check
-																	className={cn(
-																		'mr-2 size-4',
-																		data.department_id === String(department.id) ? 'opacity-100' : 'opacity-0',
-																	)}
-																/>
-																{department.name}
-															</CommandItem>
-														))}
-													</CommandGroup>
-												</CommandList>
-											</Command>
-										</PopoverContent>
-									</Popover>
-									<InputError message={errors.department_id} />
+									<Label htmlFor="request_type">
+										Request Type <span className="text-red-500">*</span>
+									</Label>
+									<Select
+										value={data.request_type}
+										onValueChange={(value) =>
+											setData({
+												...data,
+												request_type: value,
+												week_number: '',
+												week_start_date: '',
+												week_end_date: '',
+											})
+										}
+									>
+										<SelectTrigger id="request_type">
+											<SelectValue placeholder="Select request type" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="urgent">Urgent</SelectItem>
+											<SelectItem value="normal">Normal</SelectItem>
+										</SelectContent>
+									</Select>
+									<InputError message={errors.request_type} />
 								</div>
 
 								{/* Fiscal Year */}
@@ -510,69 +569,39 @@ export default function CreateWeeklyBudget({ branches, departments, fiscalYears,
 									<InputError message={errors.fiscal_month_id} />
 								</div>
 
-								{/* Budget Week Date Picker */}
+								{/* Budget Week */}
 								<div className="space-y-2">
-									<Label htmlFor="week_date_picker">
-										Budget Week Date <span className="text-red-500">*</span>
+									<Label htmlFor="budget_week">
+										Budget Week <span className="text-red-500">*</span>
 									</Label>
-									<div
-										className={cn(
-											(!data.request_type || !data.fiscal_month_id || weekOptions.length === 0 || weekOptions[0].disabled) &&
-												'cursor-not-allowed',
-										)}
+									<Select
+										value={data.week_start_date}
+										onValueChange={(value) => handleWeekSelect(value)}
+										disabled={!data.request_type || !data.fiscal_month_id || weekOptions.length === 0}
 									>
-										<Input
-											id="week_date_picker"
-											type="date"
-											min={weekOptions.length > 0 ? weekOptions[0].startDate : undefined}
-											max={weekOptions.length > 0 ? weekOptions[0].endDate : undefined}
-											disabled={
-												!data.request_type || !data.fiscal_month_id || weekOptions.length === 0 || weekOptions[0].disabled
-											}
-											value={data.week_start_date ? data.week_start_date : ''}
-											onChange={(e) => {
-												const selectedDateStr = e.target.value;
-												if (!selectedDateStr) {
-													setData({
-														...data,
-														week_number: '',
-														week_start_date: '',
-														week_end_date: '',
-													});
-													return;
+										<SelectTrigger id="budget_week">
+											<SelectValue
+												placeholder={
+													!data.request_type
+														? 'Select request type first'
+														: !data.fiscal_month_id
+															? 'Select fiscal month first'
+															: 'Select week'
 												}
-
-												// Ensure the date is valid and get its week info
-												const dateObj = new Date(selectedDateStr);
-												if (!isNaN(dateObj.getTime())) {
-													const monday = getMondayOfWeek(dateObj);
-													const sunday = new Date(monday);
-													sunday.setDate(monday.getDate() + 6);
-
-													setData({
-														...data,
-														week_number: String(getISOWeekNumber(dateObj)),
-														week_start_date: toDateString(monday),
-														week_end_date: toDateString(sunday),
-													});
-												}
-											}}
-											className="w-full"
-										/>
-									</div>
-									{!data.request_type ? (
-										<p className="text-xs text-slate-500">Please select a request type first.</p>
-									) : !data.fiscal_month_id ? (
-										<p className="text-xs text-slate-500">Please select a fiscal month first.</p>
-									) : weekOptions.length > 0 && weekOptions[0].disabled ? (
-										<p className="text-xs text-amber-600">The submission deadline (Thursday) for this week has passed.</p>
-									) : null}
-									{data.week_number && (
-										<p className="text-xs text-slate-500">
-											Selected: Week {data.week_number} ({toShortDate(new Date(data.week_start_date))} -{' '}
-											{toShortDate(new Date(data.week_end_date))})
-										</p>
-									)}
+											/>
+										</SelectTrigger>
+										<SelectContent>
+											{weekOptions.map((week) => (
+												<SelectItem
+													key={week.startDate}
+													value={week.startDate}
+													disabled={week.disabled}
+												>
+													{week.label}{week.disabled ? ' (deadline passed)' : ''}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
 									<InputError message={errors.week_number} />
 									<InputError message={errors.week_start_date} />
 									<InputError message={errors.week_end_date} />
