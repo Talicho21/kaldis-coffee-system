@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { usePermission } from '@/hooks/user-permissions';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
@@ -222,10 +222,14 @@ export default function WeeklyBudgetFinance({
 	const canManageFinance = can('manage finance budgets');
     const canOverridePaid = can('override_paid_status');
 
+    // ── Filter state ────────────────────────────────────────────────────────
 	const [selectedRequestType, setSelectedRequestType] = useState<string>(request?.request_type ?? 'all');
 	const [selectedStatusFinance, setSelectedStatusFinance] = useState<string>(request?.status_finance ?? 'all');
 	const [selectedStatusDepartment, setSelectedStatusDepartment] = useState<string>(request?.status_department ?? 'all');
 	const [selectedStatusCeo, setSelectedStatusCeo] = useState<string>(request?.status_ceo ?? 'all');
+
+	// ── View note dialog ────────────────────────────────────────────────────
+	const [viewNoteItem, setViewNoteItem] = useState<WeeklyBudgetRow | null>(null);
 	const [selectedBranch, setSelectedBranch] = useState<string>(request?.branch_id ?? 'all');
 	const [selectedDepartment, setSelectedDepartment] = useState<string>(request?.department_id ?? 'all');
 	const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>(request?.fiscal_year_id ?? 'all');
@@ -606,6 +610,7 @@ export default function WeeklyBudgetFinance({
 									<TableHead className="font-bold text-white">Payment Category</TableHead>
                                     <TableHead className="font-bold text-white">Payment Type</TableHead>
 									<TableHead className="font-bold text-white">Amount</TableHead>
+									<TableHead className="font-bold text-white">Note</TableHead>
                                     {canManageFinance && <TableHead className="font-bold text-white">Actions</TableHead>}
 								</TableRow>
 							</TableHeader>
@@ -707,6 +712,22 @@ export default function WeeklyBudgetFinance({
                                                 {formatCurrency(item.amount)}
                                             </TableCell>
 
+                                            <TableCell>
+                                                <button
+                                                    type="button"
+                                                    className={cn(
+                                                        'flex items-center justify-center rounded p-1 transition-colors',
+                                                        item.note
+                                                            ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700'
+                                                            : 'cursor-pointer text-slate-300 hover:text-slate-500',
+                                                    )}
+                                                    onClick={() => setViewNoteItem(item)}
+                                                    aria-label="View note"
+                                                >
+                                                    <MessageSquare className="size-4" />
+                                                </button>
+                                            </TableCell>
+
                                             {/* Actions — last column */}
                                             {canManageFinance && (
                                                 <TableCell className="whitespace-nowrap">
@@ -735,6 +756,23 @@ export default function WeeklyBudgetFinance({
 					)}
 				</Card>
 			</div>
+
+			{/* ── View Note Dialog ─────────────────────────────────────────── */}
+			<Dialog open={!!viewNoteItem} onOpenChange={(open) => !open && setViewNoteItem(null)}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>View Note</DialogTitle>
+					</DialogHeader>
+					<div className="py-4 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+						{viewNoteItem?.note || <span className="italic text-slate-400">No note added.</span>}
+					</div>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setViewNoteItem(null)}>
+							Cancel
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</AppLayout>
 	);
 }

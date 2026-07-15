@@ -216,6 +216,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::patch('budget/weekly-budget/finance/bulk', [WeeklyBudgetController::class, 'bulkUpdateFinance'])->name('weekly-budget.bulk-update-finance');
             Route::post('budget/weekly-budget/finance/override-paid', [WeeklyBudgetController::class, 'overridePaid'])->name('weekly-budget.override-paid');
         });
+
+        // Department View for Weekly Budgets
+        Route::middleware('permission:view department budgets')->group(function () {
+            Route::get('budget/weekly-budget/department', [WeeklyBudgetController::class, 'departmentView'])->name('weekly-budget.department');
+            Route::patch('budget/weekly-budget/{weeklyBudget}/department-status', [WeeklyBudgetController::class, 'updateDepartment'])->name('weekly-budget.update-department');
+            Route::delete('budget/weekly-budget/{weeklyBudget}/department-delete', [WeeklyBudgetController::class, 'departmentDelete'])->name('weekly-budget.department-delete');
+        });
+
+        // CEO View for Weekly Budgets
+        Route::middleware('permission:view ceo budgets')->group(function () {
+            Route::get('budget/weekly-budget/ceo', [WeeklyBudgetController::class, 'ceoView'])->name('weekly-budget.ceo');
+        });
+
+        Route::middleware('permission:manage ceo budgets')->group(function () {
+            Route::patch('budget/weekly-budget/{weeklyBudget}/ceo-status', [WeeklyBudgetController::class, 'updateCeo'])->name('weekly-budget.update-ceo');
+        });
         // Weekly Budget (existing)
         Route::middleware('permission:view weekly budgets')->group(function () {
             Route::get('budget/weekly-budget', [WeeklyBudgetController::class, 'index'])->name('weekly-budget.index');

@@ -9,6 +9,7 @@ import { Link, usePage } from '@inertiajs/react';
 import {
 	Award,
 	BarChart3,
+	Building,
 	Building2,
 	Calendar,
 	CalendarCheck,
@@ -241,9 +242,15 @@ const baseSections: NavSection[] = [
 				label: 'Weekly Budget',
 				icon: CalendarDays,
 				items: [
-					// { title: 'New Request', href: '/budget/weekly-budget/create', icon: Plus, permission: 'manage weekly budgets' },
 					{ title: 'Weekly Budgets', href: '/budget/weekly-budget', icon: List, permission: 'view weekly budgets' },
 					{ title: 'Finance View', href: '/budget/weekly-budget/finance', icon: Wallet, permission: 'view finance budgets' },
+					{ title: 'CEO View', href: '/budget/weekly-budget/ceo', icon: Wallet, permission: 'view ceo budgets' },
+					{
+						title: 'Department View',
+						href: '/budget/weekly-budget/department',
+						icon: Building,
+						permission: 'view department budgets',
+					},
 				],
 			},
 		],

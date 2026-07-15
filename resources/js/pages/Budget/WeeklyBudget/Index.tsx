@@ -9,7 +9,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePermission } from '@/hooks/user-permissions';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
@@ -536,6 +535,9 @@ export default function WeeklyBudgetIndex({
 		return fiscalMonths.filter((m) => String(m.fiscal_year_id) === selectedFiscalYear);
 	}, [fiscalMonths, selectedFiscalYear]);
 
+	// ── View note dialog ──────────────────────────────────────────────────
+	const [viewNoteItem, setViewNoteItem] = useState<WeeklyBudgetRow | null>(null);
+
 	// ─── Week filter options ──────────────────────────────────────────────────
 	const weekFilterOptions = useMemo((): WeekOption[] => {
 		const hasYear = selectedFiscalYear !== 'all';
@@ -674,7 +676,7 @@ export default function WeeklyBudgetIndex({
 
 	// Selected week option label for the filter trigger
 	const selectedWeekOption = useMemo(
-		() => (selectedWeekStartDate === 'all' ? null : weekFilterOptions.find((w) => w.startDate === selectedWeekStartDate) ?? null),
+		() => (selectedWeekStartDate === 'all' ? null : (weekFilterOptions.find((w) => w.startDate === selectedWeekStartDate) ?? null)),
 		[selectedWeekStartDate, weekFilterOptions],
 	);
 
@@ -769,7 +771,9 @@ export default function WeeklyBudgetIndex({
 											<CommandEmpty>No departments found.</CommandEmpty>
 											<CommandGroup>
 												<CommandItem value="All Departments" onSelect={() => handleDepartmentFilterSelect('all')}>
-													<Check className={cn('mr-2 size-4', selectedDepartment === 'all' ? 'opacity-100' : 'opacity-0')} />
+													<Check
+														className={cn('mr-2 size-4', selectedDepartment === 'all' ? 'opacity-100' : 'opacity-0')}
+													/>
 													All Departments
 												</CommandItem>
 												{departments.map((department) => (
@@ -908,7 +912,7 @@ export default function WeeklyBudgetIndex({
 									<TableHead className="font-bold text-white">Amount</TableHead>
 									<TableHead className="font-bold text-white">Desc</TableHead>
 									<TableHead className="font-bold text-white">Note</TableHead>
-									<TableHead className="font-bold text-white">Actions</TableHead>
+									{/* <TableHead className="font-bold text-white">Actions</TableHead> */}
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -931,30 +935,21 @@ export default function WeeklyBudgetIndex({
 											<div className="max-w-xs truncate text-sm text-slate-600">{item.description || '-'}</div>
 										</TableCell>
 										<TableCell>
-											<Tooltip delayDuration={100}>
-												<TooltipTrigger asChild>
-													<button
-														type="button"
-														className={cn(
-															'flex items-center justify-center rounded p-1 transition-colors',
-															item.note
-																? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700'
-																: 'cursor-default text-slate-300',
-														)}
-														aria-label="View note"
-													>
-														<MessageSquare className="size-4" />
-													</button>
-												</TooltipTrigger>
-												<TooltipContent
-													side="left"
-													className="max-w-[280px] whitespace-pre-wrap break-words text-sm"
-												>
-													{item.note ? item.note : <span className="italic text-muted-foreground">No note added</span>}
-												</TooltipContent>
-											</Tooltip>
+											<button
+												type="button"
+												className={cn(
+													'flex items-center justify-center rounded p-1 transition-colors',
+													item.note
+														? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700'
+														: 'cursor-pointer text-slate-300 hover:text-slate-500',
+												)}
+												onClick={() => setViewNoteItem(item)}
+												aria-label="View note"
+											>
+												<MessageSquare className="size-4" />
+											</button>
 										</TableCell>
-										<TableCell>
+										{/* <TableCell>
 											{canManageWeeklyBudget && (
 												<div className="flex flex-wrap gap-2">
 													<Button variant="outline" size="sm" onClick={() => openEditDialog(item)}>
@@ -965,7 +960,7 @@ export default function WeeklyBudgetIndex({
 													</Button>
 												</div>
 											)}
-										</TableCell>
+										</TableCell> */}
 									</TableRow>
 								))}
 							</TableBody>
@@ -994,6 +989,23 @@ export default function WeeklyBudgetIndex({
 						</Button>
 						<Button variant="destructive" onClick={confirmDeleteItem}>
 							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* ── View Note Dialog ─────────────────────────────────────────── */}
+			<Dialog open={!!viewNoteItem} onOpenChange={(open) => !open && setViewNoteItem(null)}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>View Note</DialogTitle>
+					</DialogHeader>
+					<div className="py-4 text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+						{viewNoteItem?.note || <span className="text-slate-400 italic">No note added.</span>}
+					</div>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setViewNoteItem(null)}>
+							Cancel
 						</Button>
 					</DialogFooter>
 				</DialogContent>
