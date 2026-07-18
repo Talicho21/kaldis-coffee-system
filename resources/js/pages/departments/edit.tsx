@@ -24,8 +24,9 @@ export default function EditDepartment({ department }: { department: Department 
     const { data, setData, put, errors, processing } = useForm({
         name: department.name,
         description: department.description || '',
-        is_active: (department as any).is_active ?? true,
-        is_active_on_ticketing: (department as any).is_active_on_ticketing ?? true,
+        is_active: department.is_active ?? true,
+        is_active_on_ticketing: department.is_active_on_ticketing ?? true,
+        is_headoffice: department.is_headoffice ?? false,
     });
 
     function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -91,7 +92,17 @@ export default function EditDepartment({ department }: { department: Department 
                                     checked={data.is_active_on_ticketing}
                                     onChange={(e) => setData('is_active_on_ticketing', e.target.checked)}
                                 />
-                                <InputError message={(errors as any).is_active_on_ticketing} />
+                                <InputError message={errors.is_active_on_ticketing} />
+                            </div>
+                            <div className="mb-4 flex items-center gap-2">
+                                <Label htmlFor="is_headoffice">Head Office</Label>
+                                <input
+                                    id="is_headoffice"
+                                    type="checkbox"
+                                    checked={data.is_headoffice}
+                                    onChange={(e) => setData('is_headoffice', e.target.checked)}
+                                />
+                                <InputError message={errors.is_headoffice} />
                             </div>
                             <div className="flex justify-end">
                                 <Button size="lg" type="submit" disabled={processing}>
