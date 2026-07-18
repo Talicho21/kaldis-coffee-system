@@ -859,8 +859,8 @@ export default function WeeklyBudgetDepartmentView({
 									<TableHead className="font-bold text-white">Payment Category</TableHead>
 									<TableHead className="font-bold text-white">Payment Type</TableHead>
 									<TableHead className="font-bold text-white">Amount</TableHead>
-									<TableHead className="font-bold text-white">Note</TableHead>
-									{canManageDept && <TableHead className="font-bold text-white">Actions</TableHead>}
+									<TableHead className="w-12 font-bold text-white">Note</TableHead>
+									{canManageDept && <TableHead className="w-28 font-bold text-white">Actions</TableHead>}
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -1038,7 +1038,7 @@ export default function WeeklyBudgetDepartmentView({
 											</TableCell>
 
 											{/* Note — icon shows existing note; textarea appears in edit mode when required */}
-											<TableCell className="min-w-[180px]">
+											<TableCell className={cn(noteRequired ? 'min-w-[180px]' : 'w-12')}>
 												{isEditing && noteRequired ? (
 													<div className="flex flex-col gap-1">
 														<Textarea

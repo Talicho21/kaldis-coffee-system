@@ -75,6 +75,7 @@ class WeeklyBudgetController extends Controller
 
         $departments = Department::query()
             ->where('is_active', true)
+            ->where('is_headoffice', 1)
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -125,6 +126,7 @@ class WeeklyBudgetController extends Controller
 
         $departments = Department::query()
             ->where('is_active', true)
+            ->where('is_headoffice', 1)
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -373,6 +375,7 @@ class WeeklyBudgetController extends Controller
 
         $departments = Department::query()
             ->where('is_active', true)
+            ->where('is_headoffice', 1)
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -617,7 +620,7 @@ class WeeklyBudgetController extends Controller
             ]);
 
         $branches = Branch::query()->orderBy('name')->get(['id', 'name', 'branch_code']);
-        $departments = Department::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $departments = Department::query()->where('is_active', true)->where('is_headoffice', 1)->orderBy('name')->get(['id', 'name']);
 
         $paymentCategories = [
             ['id' => 1, 'name' => 'Expense'],
