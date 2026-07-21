@@ -243,7 +243,8 @@ const baseSections: NavSection[] = [
 				icon: CalendarDays,
 				items: [
 					{ title: 'Weekly Budgets', href: '/budget/weekly-budget', icon: List, permission: 'view weekly budgets' },
-					{ title: 'Finance View', href: '/budget/weekly-budget/finance', icon: Wallet, permission: 'view finance budgets' },
+					{ title: 'Summary Analytics', href: '/budget/weekly-budget/analytics', icon: BarChart3, permission: 'view weekly budgets|view finance weekly budget|view ceo budgets' },
+					{ title: 'Finance View', href: '/budget/weekly-budget/finance', icon: Wallet, permission: 'view finance weekly budget' },
 					{ title: 'CEO View', href: '/budget/weekly-budget/ceo', icon: Wallet, permission: 'view ceo budgets' },
 					{
 						title: 'Department View',

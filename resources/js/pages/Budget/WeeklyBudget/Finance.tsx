@@ -30,8 +30,7 @@ type FiscalMonthOption = {
 	gregorian_start_date?: string | null;
 	gregorian_end_date?: string | null;
 };
-type PaymentCategoryOption = { id: number; name: string };
-type PaymentTypeOption = { id: number; name: string; payment_category_id: number };
+type PaymentTypeOption = { id: number; name: string; category: string; code: string };
 
 type WeekOption = { weekNumber: number; startDate: string; endDate: string; label: string };
 
@@ -55,7 +54,7 @@ type WeeklyBudgetRow = {
 	amount: string | number;
 	description: string | null;
 	note: string | null;
-	payment_category_id: number | null;
+	payment_category_id: string | null;
 	payment_type_id: number | null;
 	payment_category: string | null;
 	payment_type: string | null;
@@ -69,7 +68,6 @@ type IndexProps = {
 	items: WeeklyBudgetList;
 	branches: BranchOption[];
 	departments: DepartmentOption[];
-	paymentCategories: PaymentCategoryOption[];
 	paymentTypes: PaymentTypeOption[];
 	fiscalYears: FiscalYearOption[];
 	fiscalMonths: FiscalMonthOption[];
@@ -276,7 +274,6 @@ export default function WeeklyBudgetFinance({
 	items,
 	branches,
 	departments,
-	paymentCategories,
 	paymentTypes,
 	fiscalYears,
 	fiscalMonths,
@@ -290,8 +287,8 @@ export default function WeeklyBudgetFinance({
 }: IndexProps) {
 	const { flash, errors } = usePage<any>().props;
 	const { can } = usePermission();
-	const canManageFinance = can('manage finance budgets');
-	const canOverridePaid = can('override_paid_status');
+	const canManageFinance = can('edit finance weekly budget status');
+	const canOverridePaid = can('edit finance weekly budget status');
 
 	const [selectedRequestType, setSelectedRequestType] = useState<string>(request?.request_type ?? 'all');
 	const [selectedStatusFinance, setSelectedStatusFinance] = useState<string>(request?.status_finance ?? 'all');
@@ -335,10 +332,25 @@ export default function WeeklyBudgetFinance({
 		return fiscalMonths.filter((m) => String(m.fiscal_year_id) === selectedFiscalYear);
 	}, [fiscalMonths, selectedFiscalYear]);
 
+	const [fetchedPaymentTypes, setFetchedPaymentTypes] = useState<PaymentTypeOption[]>([]);
+
+	useEffect(() => {
+		const categoryToFetch = selectedPaymentCategory !== 'all' ? selectedPaymentCategory : editForm.payment_category_id;
+		if (!categoryToFetch || categoryToFetch === 'all') {
+			setFetchedPaymentTypes([]);
+			return;
+		}
+
+		fetch(`/api/payment-types?category=${categoryToFetch}`)
+			.then((res) => res.json())
+			.then((data) => setFetchedPaymentTypes(data))
+			.catch((err) => console.error('Failed to fetch payment types:', err));
+	}, [selectedPaymentCategory, editForm.payment_category_id]);
+
 	const filteredPaymentTypesFilter = useMemo(() => {
-		if (selectedPaymentCategory === 'all') return paymentTypes;
-		return paymentTypes.filter((pt) => String(pt.payment_category_id) === selectedPaymentCategory);
-	}, [paymentTypes, selectedPaymentCategory]);
+		if (selectedPaymentCategory === 'all') return fetchedPaymentTypes;
+		return fetchedPaymentTypes.filter((pt) => pt.category === selectedPaymentCategory);
+	}, [fetchedPaymentTypes, selectedPaymentCategory]);
 
 	const weekFilterOptions = useMemo((): WeekOption[] => {
 		const hasYear = selectedFiscalYear !== 'all';
@@ -777,11 +789,8 @@ export default function WeeklyBudgetFinance({
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value="all">All Categories</SelectItem>
-									{paymentCategories.map((pc) => (
-										<SelectItem key={pc.id} value={String(pc.id)}>
-											{pc.name}
-										</SelectItem>
-									))}
+									<SelectItem value="expense">Expense</SelectItem>
+									<SelectItem value="cost">Cost of Sales</SelectItem>
 								</SelectContent>
 							</Select>
 
@@ -908,8 +917,8 @@ export default function WeeklyBudgetFinance({
 									const canEditPaymentFields = isEditing && editMode !== 'revert-paid';
 									const canEditRequestFields = isEditing && editMode === 'full';
 
-									const itemFilteredPaymentTypes = paymentTypes.filter(
-										(pt) => String(pt.payment_category_id) === editForm.payment_category_id,
+									const itemFilteredPaymentTypes = fetchedPaymentTypes.filter(
+										(pt) => pt.category === editForm.payment_category_id,
 									);
 
 									return (
@@ -983,11 +992,8 @@ export default function WeeklyBudgetFinance({
 															<SelectValue placeholder="Category" />
 														</SelectTrigger>
 														<SelectContent>
-															{paymentCategories.map((pc) => (
-																<SelectItem key={pc.id} value={String(pc.id)}>
-																	{pc.name}
-																</SelectItem>
-															))}
+															<SelectItem value="expense">Expense</SelectItem>
+															<SelectItem value="cost">Cost of Sales</SelectItem>
 														</SelectContent>
 													</Select>
 												) : (
@@ -1036,7 +1042,7 @@ export default function WeeklyBudgetFinance({
 																							: 'opacity-0',
 																					)}
 																				/>
-																				{pt.name}
+																				{pt.name} {pt.code ? `(${pt.code})` : ''}
 																			</CommandItem>
 																		))}
 																	</CommandGroup>

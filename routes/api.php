@@ -11,7 +11,10 @@ Route::middleware('powerbi')->group(function () {
     Route::get('/powerbi/raw/{table}', [PowerBiRawController::class, 'table']);
 });
 
+use App\Http\Controllers\WeeklyBudgetController;
+
 // Departments by branch endpoint (for dynamic dropdowns)
 Route::middleware('auth')->group(function () {
     Route::get('/departments/by-branch', [ManagerController::class, 'departmentsByBranch'])->name('api.departments.byBranch');
+    Route::get('/payment-types', [WeeklyBudgetController::class, 'getPaymentTypes'])->name('api.payment-types');
 });

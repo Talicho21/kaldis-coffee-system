@@ -207,14 +207,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 'destroy' => 'evaluation-records.destroy',
             ]);
         // Finance View for Weekly Budgets
-        Route::middleware('permission:view finance budgets')->group(function () {
+        Route::middleware('permission:view finance weekly budget')->group(function () {
             Route::get('budget/weekly-budget/finance', [WeeklyBudgetController::class, 'financeView'])->name('weekly-budget.finance');
         });
 
-        Route::middleware('permission:manage finance budgets')->group(function () {
+        Route::middleware('permission:edit finance weekly budget status')->group(function () {
             Route::patch('budget/weekly-budget/{weeklyBudget}/finance-status', [WeeklyBudgetController::class, 'updateFinance'])->name('weekly-budget.update-finance');
-            Route::patch('budget/weekly-budget/finance/bulk', [WeeklyBudgetController::class, 'bulkUpdateFinance'])->name('weekly-budget.bulk-update-finance');
             Route::post('budget/weekly-budget/finance/override-paid', [WeeklyBudgetController::class, 'overridePaid'])->name('weekly-budget.override-paid');
+        });
+
+        Route::middleware('permission:bulk approve finance weekly budget')->group(function () {
+            Route::patch('budget/weekly-budget/finance/bulk', [WeeklyBudgetController::class, 'bulkUpdateFinance'])->name('weekly-budget.bulk-update-finance');
         });
 
         // Department View for Weekly Budgets
@@ -243,6 +246,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('budget/weekly-budget', [WeeklyBudgetController::class, 'store'])->name('weekly-budget.store');
             Route::put('budget/weekly-budget/{weeklyBudget}', [WeeklyBudgetController::class, 'update'])->name('weekly-budget.update');
             Route::delete('budget/weekly-budget/{weeklyBudget}', [WeeklyBudgetController::class, 'destroy'])->name('weekly-budget.destroy');
+        });
+
+        Route::middleware('permission:view weekly budgets|view finance weekly budget|view ceo budgets')->group(function () {
+            Route::get('budget/weekly-budget/analytics', [WeeklyBudgetController::class, 'analytics'])->name('weekly-budget.analytics');
         });
     });
 
