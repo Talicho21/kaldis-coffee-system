@@ -38,6 +38,7 @@ class DepartmentController extends Controller
             'description' => 'nullable|string',
             'is_active' => 'boolean',
             'is_active_on_ticketing' => 'boolean',
+            'is_headoffice' => 'boolean',
         ]);
 
         Department::create($validated);
@@ -60,6 +61,7 @@ class DepartmentController extends Controller
             'description' => 'nullable|string',
             'is_active' => 'boolean',
             'is_active_on_ticketing' => 'boolean',
+            'is_headoffice' => 'boolean',
         ]);
 
         $department->update($validated);
