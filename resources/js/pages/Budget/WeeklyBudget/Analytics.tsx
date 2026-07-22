@@ -6,7 +6,6 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import type { Pagination } from '@/types/pagination';
 import { Head, router } from '@inertiajs/react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useMemo } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -27,9 +26,9 @@ type FiscalMonthOption = {
 
 type MatrixRow = {
     id: number;
+    fiscal_year: string | null;
     fiscal_month: string | null;
     week_number: number;
-    budget_code: string | null;
     budget_category: string | null;
     budget_type: string | null;
     amount: number;
@@ -42,9 +41,13 @@ interface MatrixData extends Pagination {
     data: MatrixRow[];
 }
 
-type GraphData = {
-    label: string;
-    total: number;
+type Kpis = {
+    totalRequested: number;
+    totalApproved: number;
+    pendingFinanceCount: number;
+    pendingFinanceAmount: number;
+    pendingCeoCount: number;
+    pendingCeoAmount: number;
 };
 
 type AnalyticsProps = {
@@ -53,7 +56,7 @@ type AnalyticsProps = {
         dept_not_finance: number;
         finance_not_ceo: number;
     };
-    graphData: GraphData[];
+    kpis: Kpis;
     matrixData: MatrixData;
     fiscalYears: FiscalYearOption[];
     fiscalMonths: FiscalMonthOption[];
@@ -61,7 +64,6 @@ type AnalyticsProps = {
         fiscal_year_id?: string;
         fiscal_month_id?: string;
         week_number?: string;
-        group_by?: string;
         use_case?: string;
     };
 };
@@ -73,9 +75,29 @@ function formatCurrency(value: number): string {
     }).format(value);
 }
 
+// Status badge — mirrors the pattern used in Finance.tsx / Index.tsx / DepartmentView.tsx
+function statusBadge(status: string) {
+    const colorMap: Record<string, string> = {
+        pending:  'bg-amber-50 text-amber-600 border-amber-200',
+        approved: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+        rejected: 'bg-red-50 text-red-600 border-red-200',
+        paid:     'bg-blue-50 text-blue-700 border-blue-200',
+        'on-hold':   'bg-purple-50 text-purple-600 border-purple-200',
+        'on_hold':   'bg-purple-50 text-purple-600 border-purple-200',
+        onhold:      'bg-purple-50 text-purple-600 border-purple-200',
+    };
+    const cls = colorMap[status?.toLowerCase()] ?? 'bg-slate-50 text-slate-600 border-slate-200';
+    const label = status ? status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ') : '—';
+    return (
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cls}`}>
+            {label}
+        </span>
+    );
+}
+
 export default function Analytics({
     counts,
-    graphData,
+    kpis,
     matrixData,
     fiscalYears,
     fiscalMonths,
@@ -176,14 +198,81 @@ export default function Analytics({
                     </CardContent>
                 </Card>
 
-                {/* Summary Cards */}
+                {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {/* Total Requested */}
+                    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg">
+                        <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="absolute -bottom-4 -right-4 h-16 w-16 rounded-full bg-white/10" />
+                        <CardHeader className="pb-1 pt-5 px-5">
+                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-indigo-100">
+                                Total Requested
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-5 pb-5">
+                            <p className="text-2xl font-bold leading-tight">{formatCurrency(kpis.totalRequested)}</p>
+                            <p className="mt-1 text-xs text-indigo-200">All budgets in period</p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Total Approved (CEO) */}
+                    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg">
+                        <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="absolute -bottom-4 -right-4 h-16 w-16 rounded-full bg-white/10" />
+                        <CardHeader className="pb-1 pt-5 px-5">
+                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-emerald-100">
+                                Total Approved
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-5 pb-5">
+                            <p className="text-2xl font-bold leading-tight">{formatCurrency(kpis.totalApproved)}</p>
+                            <p className="mt-1 text-xs text-emerald-200">CEO approved</p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Pending Finance */}
+                    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-amber-500 to-amber-700 text-white shadow-lg">
+                        <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="absolute -bottom-4 -right-4 h-16 w-16 rounded-full bg-white/10" />
+                        <CardHeader className="pb-1 pt-5 px-5">
+                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-amber-100">
+                                Pending Finance
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-5 pb-5">
+                            <p className="text-2xl font-bold leading-tight">{formatCurrency(kpis.pendingFinanceAmount)}</p>
+                            <p className="mt-1 text-xs text-amber-200">
+                                {kpis.pendingFinanceCount} {kpis.pendingFinanceCount === 1 ? 'request' : 'requests'} waiting on Finance
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    {/* Pending CEO */}
+                    <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-lg">
+                        <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="absolute -bottom-4 -right-4 h-16 w-16 rounded-full bg-white/10" />
+                        <CardHeader className="pb-1 pt-5 px-5">
+                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-rose-100">
+                                Pending CEO
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-5 pb-5">
+                            <p className="text-2xl font-bold leading-tight">{formatCurrency(kpis.pendingCeoAmount)}</p>
+                            <p className="mt-1 text-xs text-rose-200">
+                                {kpis.pendingCeoCount} {kpis.pendingCeoCount === 1 ? 'request' : 'requests'} waiting on CEO
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* ── Status Summary Cards (clickable) ─────────────────────────────── */}
                 <div className="grid gap-4 md:grid-cols-3">
-                    <Card 
-                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${filters.use_case === 'ceo_not_paid' ? 'ring-2 ring-primary' : ''}`}
+                    <Card
+                        className={`cursor-pointer transition-all hover:shadow-md hover:bg-muted/50 ${filters.use_case === 'ceo_not_paid' ? 'ring-2 ring-primary' : ''}`}
                         onClick={() => handleUseCaseClick('ceo_not_paid')}
                     >
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">CEO Approved, Not Paid</CardTitle>
+                            <CardTitle className="text-xs font-medium">CEO Approved, Not Paid</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{counts.ceo_not_paid}</div>
@@ -191,12 +280,12 @@ export default function Analytics({
                         </CardContent>
                     </Card>
 
-                    <Card 
-                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${filters.use_case === 'dept_not_finance' ? 'ring-2 ring-primary' : ''}`}
+                    <Card
+                        className={`cursor-pointer transition-all hover:shadow-md hover:bg-muted/50 ${filters.use_case === 'dept_not_finance' ? 'ring-2 ring-primary' : ''}`}
                         onClick={() => handleUseCaseClick('dept_not_finance')}
                     >
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Dept Approved, Pending Finance</CardTitle>
+                            <CardTitle className="text-xs font-medium">Dept Approved, Pending Finance</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{counts.dept_not_finance}</div>
@@ -204,12 +293,12 @@ export default function Analytics({
                         </CardContent>
                     </Card>
 
-                    <Card 
-                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${filters.use_case === 'finance_not_ceo' ? 'ring-2 ring-primary' : ''}`}
+                    <Card
+                        className={`cursor-pointer transition-all hover:shadow-md hover:bg-muted/50 ${filters.use_case === 'finance_not_ceo' ? 'ring-2 ring-primary' : ''}`}
                         onClick={() => handleUseCaseClick('finance_not_ceo')}
                     >
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Finance Approved, Pending CEO</CardTitle>
+                            <CardTitle className="text-xs font-medium">Finance Approved, Pending CEO</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{counts.finance_not_ceo}</div>
@@ -218,53 +307,7 @@ export default function Analytics({
                     </Card>
                 </div>
 
-                {/* Bar Chart */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>Budget Totals</CardTitle>
-                        <div className="w-[200px]">
-                            <Select
-                                value={filters.group_by || 'month'}
-                                onValueChange={(v) => handleFilterChange('group_by', v)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Group by" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="year">By Year</SelectItem>
-                                    <SelectItem value="month">By Month</SelectItem>
-                                    <SelectItem value="week">By Week</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="h-[400px]">
-                        {graphData.length === 0 ? (
-                            <div className="flex h-full items-center justify-center text-muted-foreground">
-                                No data available for chart.
-                            </div>
-                        ) : (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={graphData} margin={{ top: 10, right: 10, left: 20, bottom: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis dataKey="label" axisLine={false} tickLine={false} />
-                                    <YAxis
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tickFormatter={(value) => `${formatCurrency(value)}`}
-                                    />
-                                    <Tooltip
-                                        formatter={(value: number) => [formatCurrency(value), 'Total']}
-                                        cursor={{ fill: 'transparent' }}
-                                    />
-                                    <Bar dataKey="total" fill="currentColor" className="fill-primary" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Data Matrix */}
+                {/* ── Data Matrix ───────────────────────────────────────────────────── */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Detailed Matrix</CardTitle>
@@ -274,38 +317,36 @@ export default function Analytics({
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead>Fiscal Year</TableHead>
                                         <TableHead>Fiscal Month</TableHead>
                                         <TableHead>Fiscal Week</TableHead>
-                                        <TableHead>Budget Code</TableHead>
                                         <TableHead>Budget Category</TableHead>
                                         <TableHead>Budget Type</TableHead>
                                         <TableHead className="text-right">Amount</TableHead>
-                                        <TableHead>Status (Dept / Fin / CEO)</TableHead>
+                                        <TableHead>Dept Status</TableHead>
+                                        <TableHead>Finance Status</TableHead>
+                                        <TableHead>CEO Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {matrixData.data.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-24 text-center">
+                                            <TableCell colSpan={9} className="h-24 text-center">
                                                 No results.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
                                         matrixData.data.map((row) => (
                                             <TableRow key={row.id}>
-                                                <TableCell>{row.fiscal_month}</TableCell>
+                                                <TableCell className="text-xs text-muted-foreground">{row.fiscal_year || '-'}</TableCell>
+                                                <TableCell>{row.fiscal_month || '-'}</TableCell>
                                                 <TableCell>Week {row.week_number}</TableCell>
-                                                <TableCell>{row.budget_code || '-'}</TableCell>
                                                 <TableCell>{row.budget_category || '-'}</TableCell>
                                                 <TableCell>{row.budget_type || '-'}</TableCell>
-                                                <TableCell className="text-right">{formatCurrency(row.amount)}</TableCell>
-                                                <TableCell>
-                                                    <span className="text-xs">
-                                                        <span className={row.status_department === 'approved' ? 'text-green-600' : ''}>{row.status_department}</span> /{' '}
-                                                        <span className={row.status_finance === 'approved' || row.status_finance === 'paid' ? 'text-green-600' : ''}>{row.status_finance}</span> /{' '}
-                                                        <span className={row.status_ceo === 'approved' ? 'text-green-600' : ''}>{row.status_ceo}</span>
-                                                    </span>
-                                                </TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(row.amount)}</TableCell>
+                                                <TableCell>{statusBadge(row.status_department)}</TableCell>
+                                                <TableCell>{statusBadge(row.status_finance)}</TableCell>
+                                                <TableCell>{statusBadge(row.status_ceo)}</TableCell>
                                             </TableRow>
                                         ))
                                     )}

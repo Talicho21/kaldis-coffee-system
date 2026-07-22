@@ -389,6 +389,19 @@ class WeeklyBudgetController extends Controller
             ->where('gregorian_end_date', '>=', $today)
             ->first();
 
+        $expenseItemsForFinance = ExpenseItem::query()->orderBy('expense_type')->get();
+
+        $paymentCategories = [
+            ['id' => 1, 'name' => 'Expense'],
+            ['id' => 2, 'name' => 'Cost of Sales'],
+        ];
+
+        $paymentTypes = $expenseItemsForFinance->map(fn ($e) => [
+            'id'                  => $e->expense_parent_acc_code,
+            'name'                => $e->expense_type,
+            'payment_category_id' => $e->is_expense ? 1 : 2,
+        ])->values()->toArray();
+
         return Inertia::render('Budget/WeeklyBudget/Finance', [
             'items'       => $items,
             'branches'    => $branches,
@@ -859,6 +872,7 @@ class WeeklyBudgetController extends Controller
 
         $baseQuery = clone $query;
 
+        // ── KPI counts (existing) ──────────────────────────────────────────
         $countCeoNotPaid = (clone $baseQuery)
             ->where('weekly_budgets.status_ceo', WeeklyBudgetStatusCeo::Approved->value)
             ->where('weekly_budgets.status_finance', '!=', WeeklyBudgetStatusFinance::Paid->value)
@@ -875,32 +889,29 @@ class WeeklyBudgetController extends Controller
             ->where('weekly_budgets.status_ceo', WeeklyBudgetStatusCeo::Pending->value)
             ->count();
 
-        $groupBy = $request->get('group_by', 'month');
-        $graphData = [];
-        
-        $graphQuery = clone $baseQuery;
-        
-        if ($groupBy === 'year') {
-            $graphData = $graphQuery
-                ->join('fiscal_years', 'weekly_budgets.fiscal_year_id', '=', 'fiscal_years.id')
-                ->selectRaw('fiscal_years.name as label, SUM(weekly_budgets.amount) as total')
-                ->groupBy('fiscal_years.id', 'fiscal_years.name')
-                ->get();
-        } elseif ($groupBy === 'month') {
-            $graphData = $graphQuery
-                ->join('fiscal_months', 'weekly_budgets.fiscal_month_id', '=', 'fiscal_months.id')
-                ->selectRaw('fiscal_months.name as label, SUM(weekly_budgets.amount) as total')
-                ->groupBy('fiscal_months.id', 'fiscal_months.name')
-                ->get();
-        } elseif ($groupBy === 'week') {
-            $graphData = $graphQuery
-                ->selectRaw('CONCAT("Week ", weekly_budgets.week_number) as label, SUM(weekly_budgets.amount) as total')
-                ->groupBy('weekly_budgets.week_number')
-                ->get();
-        }
+        // ── New KPI: total requested & approved amounts ───────────────────
+        $totalRequested = (clone $baseQuery)->sum('weekly_budgets.amount');
 
+        $totalApproved = (clone $baseQuery)
+            ->where('weekly_budgets.status_ceo', WeeklyBudgetStatusCeo::Approved->value)
+            ->sum('weekly_budgets.amount');
+
+        // ── New KPI: pending-finance amount ────────────────────────────────
+        $pendingFinanceAmount = (clone $baseQuery)
+            ->where('weekly_budgets.status_department', WeeklyBudgetStatusDepartment::Approved->value)
+            ->where('weekly_budgets.status_finance', WeeklyBudgetStatusFinance::Pending->value)
+            ->sum('weekly_budgets.amount');
+
+        // ── New KPI: pending-CEO amount ────────────────────────────────────
+        $pendingCeoAmount = (clone $baseQuery)
+            ->where('weekly_budgets.status_department', WeeklyBudgetStatusDepartment::Approved->value)
+            ->where('weekly_budgets.status_finance', WeeklyBudgetStatusFinance::Approved->value)
+            ->where('weekly_budgets.status_ceo', WeeklyBudgetStatusCeo::Pending->value)
+            ->sum('weekly_budgets.amount');
+
+        // ── Matrix data (use_case filter applied to full query) ───────────
         $useCase = $request->get('use_case');
-        
+
         if ($useCase === 'ceo_not_paid') {
             $query->where('weekly_budgets.status_ceo', WeeklyBudgetStatusCeo::Approved->value)
                   ->where('weekly_budgets.status_finance', '!=', WeeklyBudgetStatusFinance::Paid->value);
@@ -914,29 +925,36 @@ class WeeklyBudgetController extends Controller
         }
 
         $matrixData = $query->latest('weekly_budgets.created_at')->paginate(10)->withQueryString()->through(fn ($wb) => [
-            'id' => $wb->id,
-            'fiscal_month' => $wb->fiscalMonth?->name,
-            'week_number' => $wb->week_number,
-            'budget_code' => $wb->paymentType?->code,
-            'budget_category' => $wb->paymentCategory?->name,
-            'budget_type' => $wb->paymentType?->name,
-            'amount' => (float) $wb->amount,
+            'id'                => $wb->id,
+            'fiscal_year'       => $wb->fiscalYear?->name,
+            'fiscal_month'      => $wb->fiscalMonth?->name,
+            'week_number'       => $wb->week_number,
+            'budget_category'   => $wb->paymentCategory?->name,
+            'budget_type'       => $wb->paymentType?->name,
+            'amount'            => (float) $wb->amount,
             'status_department' => $wb->status_department?->value,
-            'status_finance' => $wb->status_finance?->value,
-            'status_ceo' => $wb->status_ceo?->value,
+            'status_finance'    => $wb->status_finance?->value,
+            'status_ceo'        => $wb->status_ceo?->value,
         ]);
 
         return Inertia::render('Budget/WeeklyBudget/Analytics', [
             'counts' => [
-                'ceo_not_paid' => $countCeoNotPaid,
-                'dept_not_finance' => $countDeptNotFinance,
+                'ceo_not_paid'    => $countCeoNotPaid,
+                'dept_not_finance'=> $countDeptNotFinance,
                 'finance_not_ceo' => $countFinanceNotCeo,
             ],
-            'graphData' => $graphData,
-            'matrixData' => $matrixData,
-            'fiscalYears' => $this->fiscalYearOptions(),
-            'fiscalMonths' => $this->fiscalMonthOptions(),
-            'filters' => request()->only(['fiscal_year_id', 'fiscal_month_id', 'week_number', 'group_by', 'use_case']),
+            'kpis' => [
+                'totalRequested'      => (float) $totalRequested,
+                'totalApproved'       => (float) $totalApproved,
+                'pendingFinanceCount' => $countDeptNotFinance,
+                'pendingFinanceAmount'=> (float) $pendingFinanceAmount,
+                'pendingCeoCount'     => $countFinanceNotCeo,
+                'pendingCeoAmount'    => (float) $pendingCeoAmount,
+            ],
+            'matrixData'        => $matrixData,
+            'fiscalYears'       => $this->fiscalYearOptions(),
+            'fiscalMonths'      => $this->fiscalMonthOptions(),
+            'filters'           => request()->only(['fiscal_year_id', 'fiscal_month_id', 'week_number', 'use_case']),
         ]);
     }
     public function getPaymentTypes(Request $request)
